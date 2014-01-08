@@ -364,7 +364,7 @@ public class CBORGenerator
      * Note that usually you do not need to call this for first document to output, 
      * but rather only if you intend to write multiple root-level documents
      * with same generator (and even in that case this is optional thing to do).
-     * As a result usually only {@link SmileFactory} calls this method.
+     * As a result usually only {@link CBORFactory} calls this method.
      */
     public void writeHeader() throws IOException
     {

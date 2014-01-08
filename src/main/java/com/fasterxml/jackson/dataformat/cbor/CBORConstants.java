@@ -1,9 +1,9 @@
 package com.fasterxml.jackson.dataformat.cbor;
 
 /**
- * Constants used by {@link SmileGenerator} and {@link SmileParser}
+ * Constants used by {@link CBORGenerator} and {@link CBORParser}
  * 
- * @author tatu
+ * @author Tatu Saloranta
  */
 public final class CBORConstants
 {
