@@ -1,8 +1,6 @@
-package com.fasterxml.dataformat.cbor;
+package com.fasterxml.jackson.dataformat.cbor;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.lang.ref.SoftReference;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -14,7 +12,7 @@ import com.fasterxml.jackson.core.io.IOContext;
 import com.fasterxml.jackson.core.sym.BytesToNameCanonicalizer;
 import com.fasterxml.jackson.core.sym.Name;
 
-import static com.fasterxml.jackson.dataformat.smile.SmileConstants.BYTE_MARKER_END_OF_STRING;
+import static com.fasterxml.jackson.dataformat.cbor.CBORConstants.BYTE_MARKER_END_OF_STRING;
 
 public class CBORParser
     extends ParserBase
@@ -84,10 +82,10 @@ public class CBORParser
     protected boolean _mayContainRawBinary;
 
     /**
-     * Helper object used for low-level recycling of Smile-generator
+     * Helper object used for low-level recycling of CBOR-generator
      * specific buffers.
      */
-    final protected SmileBufferRecycler<String> _smileBufferRecycler;
+    final protected CBORBufferRecycler<String> _bufferRecycler;
 
     /*
     /**********************************************************
@@ -194,8 +192,8 @@ public class CBORParser
      * to a buffer recycler used to provide a low-cost
      * buffer recycling for Smile-specific buffers.
      */
-    final protected static ThreadLocal<SoftReference<SmileBufferRecycler<String>>> _smileRecyclerRef
-        = new ThreadLocal<SoftReference<SmileBufferRecycler<String>>>();
+    final protected static ThreadLocal<SoftReference<CBORBufferRecycler<String>>> _smileRecyclerRef
+        = new ThreadLocal<SoftReference<CBORBufferRecycler<String>>>();
 
     /*
     /**********************************************************
@@ -221,7 +219,7 @@ public class CBORParser
         
         _tokenInputRow = -1;
         _tokenInputCol = -1;
-        _smileBufferRecycler = _smileBufferRecycler();
+        _bufferRecycler = _bufferRecycler();
     }
 
     @Override
@@ -250,7 +248,7 @@ public class CBORParser
         if (_inputPtr >= _inputEnd) {
             loadMoreGuaranteed();
         }
-        if (_inputBuffer[_inputPtr] != SmileConstants.HEADER_BYTE_2) {
+        if (_inputBuffer[_inputPtr] != CBORConstants.HEADER_BYTE_2) {
             if (throwException) {
             	_reportError("Malformed content: signature not valid, starts with 0x3a but followed by 0x"
             			+Integer.toHexString(_inputBuffer[_inputPtr])+", not 0x29");
@@ -260,7 +258,7 @@ public class CBORParser
         if (++_inputPtr >= _inputEnd) {
             loadMoreGuaranteed();        	
         }
-        if (_inputBuffer[_inputPtr] != SmileConstants.HEADER_BYTE_3) {
+        if (_inputBuffer[_inputPtr] != CBORConstants.HEADER_BYTE_3) {
             if (throwException) {
             	_reportError("Malformed content: signature not valid, starts with 0x3a, 0x29, but followed by 0x"
             			+Integer.toHexString(_inputBuffer[_inputPtr])+", not 0xA");
@@ -274,32 +272,32 @@ public class CBORParser
         int ch = _inputBuffer[_inputPtr++];
         int versionBits = (ch >> 4) & 0x0F;
         // but failure with version number is fatal, can not ignore
-        if (versionBits != SmileConstants.HEADER_VERSION_0) {
+        if (versionBits != CBORConstants.HEADER_VERSION_0) {
             _reportError("Header version number bits (0x"+Integer.toHexString(versionBits)+") indicate unrecognized version; only 0x0 handled by parser");
         }
 
         // can avoid tracking names, if explicitly disabled
-        if ((ch & SmileConstants.HEADER_BIT_HAS_SHARED_NAMES) == 0) {
+        if ((ch & CBORConstants.HEADER_BIT_HAS_SHARED_NAMES) == 0) {
             _seenNames = null;
             _seenNameCount = -1;
         }
         // conversely, shared string values must be explicitly enabled
-        if ((ch & SmileConstants.HEADER_BIT_HAS_SHARED_STRING_VALUES) != 0) {
+        if ((ch & CBORConstants.HEADER_BIT_HAS_SHARED_STRING_VALUES) != 0) {
             _seenStringValues = NO_STRINGS;
             _seenStringValueCount = 0;
         }
-        _mayContainRawBinary = ((ch & SmileConstants.HEADER_BIT_HAS_RAW_BINARY) != 0);
+        _mayContainRawBinary = ((ch & CBORConstants.HEADER_BIT_HAS_RAW_BINARY) != 0);
         return true;
     }
 
-    protected final static SmileBufferRecycler<String> _smileBufferRecycler()
+    protected final static CBORBufferRecycler<String> _bufferRecycler()
     {
-        SoftReference<SmileBufferRecycler<String>> ref = _smileRecyclerRef.get();
-        SmileBufferRecycler<String> br = (ref == null) ? null : ref.get();
+        SoftReference<CBORBufferRecycler<String>> ref = _smileRecyclerRef.get();
+        CBORBufferRecycler<String> br = (ref == null) ? null : ref.get();
 
         if (br == null) {
-            br = new SmileBufferRecycler<String>();
-            _smileRecyclerRef.set(new SoftReference<SmileBufferRecycler<String>>(br));
+            br = new CBORBufferRecycler<String>();
+            _smileRecyclerRef.set(new SoftReference<CBORBufferRecycler<String>>(br));
         }
         return br;
     }
@@ -513,7 +511,7 @@ public class CBORParser
                 if (_seenNameCount > 0) {
                     Arrays.fill(nameBuf, 0, _seenNameCount, null);
                 }
-                _smileBufferRecycler.releaseSeenNamesBuffer(nameBuf);
+                _bufferRecycler.releaseSeenNamesBuffer(nameBuf);
             }
         }
         {
@@ -526,7 +524,7 @@ public class CBORParser
                 if (_seenStringValueCount > 0) {
                     Arrays.fill(valueBuf, 0, _seenStringValueCount, null);
                 }
-                _smileBufferRecycler.releaseSeenStringValuesBuffer(valueBuf);
+                _bufferRecycler.releaseSeenStringValuesBuffer(valueBuf);
             }
         }
     }
@@ -650,7 +648,7 @@ public class CBORParser
             }
             return _currToken;
         case 6: // small integers; zigzag encoded
-            _numberInt = SmileUtil.zigzagDecode(ch & 0x1F);
+            _numberInt = CBORUtil.zigzagDecode(ch & 0x1F);
             _numTypesValid = NR_INT;
             return (_currToken = JsonToken.VALUE_NUMBER_INT);
         case 7: // binary/long-text/long-shared/start-end-markers
@@ -725,15 +723,15 @@ public class CBORParser
         int len = oldShared.length;
         String[] newShared;
         if (len == 0) {
-            newShared = _smileBufferRecycler.allocSeenStringValuesBuffer();
+            newShared = _bufferRecycler.allocSeenStringValuesBuffer();
             if (newShared == null) {
-                newShared = new String[SmileBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH];
+                newShared = new String[CBORBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH];
             }
-        } else if (len == SmileConstants.MAX_SHARED_STRING_VALUES) { // too many? Just flush...
+        } else if (len == CBORConstants.MAX_SHARED_STRING_VALUES) { // too many? Just flush...
            newShared = oldShared;
            _seenStringValueCount = 0; // could also clear, but let's not yet bother
         } else {
-            int newSize = (len == SmileBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH) ? 256 : SmileConstants.MAX_SHARED_STRING_VALUES;
+            int newSize = (len == CBORBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH) ? 256 : CBORConstants.MAX_SHARED_STRING_VALUES;
             newShared = new String[newSize];
             System.arraycopy(oldShared, 0, newShared, 0, oldShared.length);
         }
@@ -1247,7 +1245,7 @@ public class CBORParser
 
         // otherwise, handle, mark as complete
         // first, raw inlined binary data (simple)
-        if (_typeByte == SmileConstants.TOKEN_MISC_BINARY_RAW) {
+        if (_typeByte == CBORConstants.TOKEN_MISC_BINARY_RAW) {
             final int totalCount = _readUnsignedVInt();
             int left = totalCount;
             while (left > 0) {
@@ -1264,7 +1262,7 @@ public class CBORParser
             _tokenIncomplete = false;
             return totalCount;
         }
-        if (_typeByte != SmileConstants.TOKEN_MISC_BINARY_7BIT) {
+        if (_typeByte != CBORConstants.TOKEN_MISC_BINARY_7BIT) {
             _throwInternal();
         }
         // or, alternative, 7-bit encoded stuff:
@@ -1457,15 +1455,15 @@ public class CBORParser
         int len = oldShared.length;
         String[] newShared;
         if (len == 0) {
-            newShared = _smileBufferRecycler.allocSeenNamesBuffer();
+            newShared = _bufferRecycler.allocSeenNamesBuffer();
             if (newShared == null) {
-                newShared = new String[SmileBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH];                
+                newShared = new String[CBORBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH];                
             }
-        } else if (len == SmileConstants.MAX_SHARED_NAMES) { // too many? Just flush...
+        } else if (len == CBORConstants.MAX_SHARED_NAMES) { // too many? Just flush...
       	   newShared = oldShared;
       	   _seenNameCount = 0; // could also clear, but let's not yet bother
         } else {
-            int newSize = (len == SmileBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH) ? 256 : SmileConstants.MAX_SHARED_NAMES;
+            int newSize = (len == CBORBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH) ? 256 : CBORConstants.MAX_SHARED_NAMES;
             newShared = new String[newSize];
             System.arraycopy(oldShared, 0, newShared, 0, oldShared.length);
         }
@@ -1529,7 +1527,7 @@ public class CBORParser
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
         int inPtr = _inputPtr;
         _inputPtr += len;
-        final int[] codes = SmileConstants.sUtf8UnitLengths;
+        final int[] codes = CBORConstants.sUtf8UnitLengths;
         final byte[] inBuf = _inputBuffer;
         for (int end = inPtr + len; inPtr < end; ) {
             int i = inBuf[inPtr++] & 0xFF;
@@ -1999,7 +1997,7 @@ public class CBORParser
     	    }
     	    value = (value << 6) + (i & 0x3F);
     	}
-        _numberInt = SmileUtil.zigzagDecode(value);
+        _numberInt = CBORUtil.zigzagDecode(value);
     	_numTypesValid = NR_INT;
     }
 
@@ -2016,7 +2014,7 @@ public class CBORParser
     	    int value = _inputBuffer[_inputPtr++];
     	    if (value < 0) {
     	        l = (l << 6) + (value & 0x3F);
-    	        _numberLong = SmileUtil.zigzagDecode(l);
+    	        _numberLong = CBORUtil.zigzagDecode(l);
     	        _numTypesValid = NR_LONG;
     	        return;
     	    }
@@ -2089,7 +2087,7 @@ public class CBORParser
     private final void _finishBigDecimal()
         throws IOException, JsonParseException
     {
-        int scale = SmileUtil.zigzagDecode(_readUnsignedVInt());
+        int scale = CBORUtil.zigzagDecode(_readUnsignedVInt());
         byte[] raw = _read7BitBinaryWithLength();
         _numberBigDecimal = new BigDecimal(new BigInteger(raw), scale);
         _numTypesValid = NR_BIGDECIMAL;
@@ -2220,7 +2218,7 @@ public class CBORParser
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
         int inPtr = _inputPtr;
         _inputPtr += len;
-        final int[] codes = SmileConstants.sUtf8UnitLengths;
+        final int[] codes = CBORConstants.sUtf8UnitLengths;
         final byte[] inputBuf = _inputBuffer;
         for (int end = inPtr + len; inPtr < end; ) {
             int i = inputBuf[inPtr++] & 0xFF;
@@ -2274,7 +2272,7 @@ public class CBORParser
             left = Math.min(left, outBuf.length - outPtr);
             do {
                 byte b = _inputBuffer[inPtr++];
-                if (b == SmileConstants.BYTE_MARKER_END_OF_STRING) {
+                if (b == CBORConstants.BYTE_MARKER_END_OF_STRING) {
                     _inputPtr = inPtr;
                     break main_loop;
                 }
@@ -2290,7 +2288,7 @@ public class CBORParser
     {
 	int outPtr = 0;
 	char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
-	final int[] codes = SmileConstants.sUtf8UnitLengths;
+	final int[] codes = CBORConstants.sUtf8UnitLengths;
         int c;
         final byte[] inputBuffer = _inputBuffer;
 
@@ -2326,7 +2324,7 @@ public class CBORParser
                 _inputPtr = ptr;
             }
             // Ok: end marker, escape or multi-byte?
-            if (c == SmileConstants.INT_MARKER_END_OF_STRING) {
+            if (c == CBORConstants.INT_MARKER_END_OF_STRING) {
                 break main_loop;
             }
 

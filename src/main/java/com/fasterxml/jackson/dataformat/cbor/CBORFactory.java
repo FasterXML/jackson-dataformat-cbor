@@ -37,7 +37,7 @@ public class CBORFactory extends JsonFactory
      * Name used to identify CBOR format.
      * (and returned by {@link #getFormatName()}
      */
-    public final static String FORMAT_NAME_SMILE = "CBOR";
+    public final static String FORMAT_NAME = "CBOR";
     
     /**
      * Bitfield (set of flags) of all parser features that are enabled
@@ -155,7 +155,7 @@ public class CBORFactory extends JsonFactory
     
     @Override
     public String getFormatName() {
-        return FORMAT_NAME_SMILE;
+        return FORMAT_NAME;
     }
 
     // Defaults work fine for this:

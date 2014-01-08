@@ -1,4 +1,4 @@
-package com.fasterxml.dataformat.cbor;
+package com.fasterxml.jackson.dataformat.cbor;
 
 import java.io.*;
 import java.lang.ref.SoftReference;
@@ -11,12 +11,12 @@ import com.fasterxml.jackson.core.io.*;
 import com.fasterxml.jackson.core.json.JsonWriteContext;
 import com.fasterxml.jackson.core.base.GeneratorBase;
 
-import static com.fasterxml.jackson.dataformat.smile.SmileConstants.*;
+import static com.fasterxml.jackson.dataformat.cbor.CBORConstants.*;
 
 /**
  * {@link JsonGenerator} implementation for the experimental "Binary JSON Infoset".
  * 
- * @author tatu
+ * @author Tatu Saloranta
  */
 public class CBORGenerator
     extends GeneratorBase
@@ -38,7 +38,7 @@ public class CBORGenerator
 
         /**
          * Whether write byte marker that signifies end of logical content segment
-         * ({@link SmileConstants#BYTE_MARKER_END_OF_CONTENT}) when
+         * ({@link CBORConstants#BYTE_MARKER_END_OF_CONTENT}) when
          * {@link #close} is called or not. This can be useful when outputting
          * multiple adjacent logical content segments (documents) into single
          * physical output unit (file).
@@ -142,13 +142,13 @@ public class CBORGenerator
 
     protected final static byte TOKEN_BYTE_LONG_STRING_ASCII = TOKEN_MISC_LONG_TEXT_ASCII;
 
-    protected final static byte TOKEN_BYTE_INT_32 =  (byte) (SmileConstants.TOKEN_PREFIX_INTEGER + TOKEN_MISC_INTEGER_32);
-    protected final static byte TOKEN_BYTE_INT_64 =  (byte) (SmileConstants.TOKEN_PREFIX_INTEGER + TOKEN_MISC_INTEGER_64);
-    protected final static byte TOKEN_BYTE_BIG_INTEGER =  (byte) (SmileConstants.TOKEN_PREFIX_INTEGER + TOKEN_MISC_INTEGER_BIG);
+    protected final static byte TOKEN_BYTE_INT_32 =  (byte) (CBORConstants.TOKEN_PREFIX_INTEGER + TOKEN_MISC_INTEGER_32);
+    protected final static byte TOKEN_BYTE_INT_64 =  (byte) (CBORConstants.TOKEN_PREFIX_INTEGER + TOKEN_MISC_INTEGER_64);
+    protected final static byte TOKEN_BYTE_BIG_INTEGER =  (byte) (CBORConstants.TOKEN_PREFIX_INTEGER + TOKEN_MISC_INTEGER_BIG);
 
-    protected final static byte TOKEN_BYTE_FLOAT_32 =  (byte) (SmileConstants.TOKEN_PREFIX_FP | TOKEN_MISC_FLOAT_32);
-    protected final static byte TOKEN_BYTE_FLOAT_64 =  (byte) (SmileConstants.TOKEN_PREFIX_FP | TOKEN_MISC_FLOAT_64);
-    protected final static byte TOKEN_BYTE_BIG_DECIMAL =  (byte) (SmileConstants.TOKEN_PREFIX_FP | TOKEN_MISC_FLOAT_BIG);
+    protected final static byte TOKEN_BYTE_FLOAT_32 =  (byte) (CBORConstants.TOKEN_PREFIX_FP | TOKEN_MISC_FLOAT_32);
+    protected final static byte TOKEN_BYTE_FLOAT_64 =  (byte) (CBORConstants.TOKEN_PREFIX_FP | TOKEN_MISC_FLOAT_64);
+    protected final static byte TOKEN_BYTE_BIG_DECIMAL =  (byte) (CBORConstants.TOKEN_PREFIX_FP | TOKEN_MISC_FLOAT_BIG);
     
     protected final static int SURR1_FIRST = 0xD800;
     protected final static int SURR1_LAST = 0xDBFF;
@@ -179,7 +179,7 @@ public class CBORGenerator
      * Helper object used for low-level recycling of Smile-generator
      * specific buffers.
      */
-    final protected SmileBufferRecycler<SharedStringNode> _smileBufferRecycler;
+    final protected CBORBufferRecycler<SharedStringNode> _smileBufferRecycler;
     
     /*
     /**********************************************************
@@ -267,8 +267,8 @@ public class CBORGenerator
      * to a buffer recycler used to provide a low-cost
      * buffer recycling for Smile-specific buffers.
      */
-    final protected static ThreadLocal<SoftReference<SmileBufferRecycler<SharedStringNode>>> _smileRecyclerRef
-        = new ThreadLocal<SoftReference<SmileBufferRecycler<SharedStringNode>>>();
+    final protected static ThreadLocal<SoftReference<CBORBufferRecycler<SharedStringNode>>> _smileRecyclerRef
+        = new ThreadLocal<SoftReference<CBORBufferRecycler<SharedStringNode>>>();
     
     /*
     /**********************************************************
@@ -300,7 +300,7 @@ public class CBORGenerator
         } else {
             _seenNames = _smileBufferRecycler.allocSeenNamesBuffer();
             if (_seenNames == null) {
-                _seenNames = new SharedStringNode[SmileBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH];
+                _seenNames = new SharedStringNode[CBORBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH];
             }
             _seenNameCount = 0;
         }
@@ -311,7 +311,7 @@ public class CBORGenerator
         } else {
             _seenStringValues = _smileBufferRecycler.allocSeenStringValuesBuffer();
             if (_seenStringValues == null) {
-                _seenStringValues = new SharedStringNode[SmileBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH];
+                _seenStringValues = new SharedStringNode[CBORBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH];
             }
             _seenStringValueCount = 0;
         }
@@ -342,7 +342,7 @@ public class CBORGenerator
         } else {
             _seenNames = _smileBufferRecycler.allocSeenNamesBuffer();
             if (_seenNames == null) {
-                _seenNames = new SharedStringNode[SmileBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH];
+                _seenNames = new SharedStringNode[CBORBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH];
             }
             _seenNameCount = 0;
         }
@@ -353,7 +353,7 @@ public class CBORGenerator
         } else {
             _seenStringValues = _smileBufferRecycler.allocSeenStringValuesBuffer();
             if (_seenStringValues == null) {
-                _seenStringValues = new SharedStringNode[SmileBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH];
+                _seenStringValues = new SharedStringNode[CBORBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH];
             }
             _seenStringValueCount = 0;
         }
@@ -370,25 +370,25 @@ public class CBORGenerator
     {
     	int last = HEADER_BYTE_4;
         if ((_smileFeatures & Feature.CHECK_SHARED_NAMES.getMask()) != 0) {
-            last |= SmileConstants.HEADER_BIT_HAS_SHARED_NAMES;
+            last |= CBORConstants.HEADER_BIT_HAS_SHARED_NAMES;
         }
         if ((_smileFeatures & Feature.CHECK_SHARED_STRING_VALUES.getMask()) != 0) {
-            last |= SmileConstants.HEADER_BIT_HAS_SHARED_STRING_VALUES;
+            last |= CBORConstants.HEADER_BIT_HAS_SHARED_STRING_VALUES;
         }
         if ((_smileFeatures & Feature.ENCODE_BINARY_AS_7BIT.getMask()) == 0) {
-            last |= SmileConstants.HEADER_BIT_HAS_RAW_BINARY;
+            last |= CBORConstants.HEADER_BIT_HAS_RAW_BINARY;
         }
         _writeBytes(HEADER_BYTE_1, HEADER_BYTE_2, HEADER_BYTE_3, (byte) last);
     }
 
-    protected final static SmileBufferRecycler<SharedStringNode> _smileBufferRecycler()
+    protected final static CBORBufferRecycler<SharedStringNode> _smileBufferRecycler()
     {
-        SoftReference<SmileBufferRecycler<SharedStringNode>> ref = _smileRecyclerRef.get();
-        SmileBufferRecycler<SharedStringNode> br = (ref == null) ? null : ref.get();
+        SoftReference<CBORBufferRecycler<SharedStringNode>> ref = _smileRecyclerRef.get();
+        CBORBufferRecycler<SharedStringNode> br = (ref == null) ? null : ref.get();
 
         if (br == null) {
-            br = new SmileBufferRecycler<SharedStringNode>();
-            _smileRecyclerRef.set(new SoftReference<SmileBufferRecycler<SharedStringNode>>(br));
+            br = new CBORBufferRecycler<SharedStringNode>();
+            _smileRecyclerRef.set(new SoftReference<CBORBufferRecycler<SharedStringNode>>(br));
         }
         return br;
     }
@@ -865,7 +865,7 @@ public class CBORGenerator
             }
         } else { // nope, longer String 
             _outputBuffer[origOffset] = (byteLen == len) ? TOKEN_BYTE_LONG_STRING_ASCII
-                    : SmileConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
+                    : CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
             // and we will need String end marker byte
             _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
         }
@@ -895,7 +895,7 @@ public class CBORGenerator
     {
         // First: can we at least make a copy to char[]?
         if (len > _charBufferLength) { // nope; need to skip copy step (alas; this is slower)
-            _writeByte(SmileConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
+            _writeByte(CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
             _slowUTF8Encode(text);
             _writeByte(BYTE_MARKER_END_OF_STRING);
             return;
@@ -906,7 +906,7 @@ public class CBORGenerator
         // Next: does it always fit within output buffer?
         if (maxLen > _outputBuffer.length) { // nope
             // can't rewrite type buffer, so can't speculate it might be all-ASCII
-            _writeByte(SmileConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
+            _writeByte(CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
             _mediumUTF8Encode(_charBuffer, 0, len);
             _writeByte(BYTE_MARKER_END_OF_STRING);
             return;
@@ -921,7 +921,7 @@ public class CBORGenerator
         int byteLen = _shortUTF8Encode(_charBuffer, 0, len);
         // If not ASCII, fix type:
         if (byteLen > len) {
-            _outputBuffer[origOffset] = SmileConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
+            _outputBuffer[origOffset] = CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
         }
         _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;                
     }
@@ -955,7 +955,7 @@ public class CBORGenerator
                     typeToken = (byte) ((TOKEN_PREFIX_TINY_UNICODE - 2) + byteLen);
                 }
             } else { // nope, longer non-ASCII Strings
-                typeToken = SmileConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
+                typeToken = CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
                 // and we will need String end marker byte
                 _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
             }
@@ -969,7 +969,7 @@ public class CBORGenerator
                     _flushBuffer();
                 }
                 int origOffset = _outputTail;
-                _writeByte(SmileConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
+                _writeByte(CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
                 int byteLen = _shortUTF8Encode(text, offset, offset+len);
                 // if it's ASCII, let's revise our type determination (to help decoder optimize)
                 if (byteLen == len) {
@@ -977,7 +977,7 @@ public class CBORGenerator
                 }
                 _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
             } else {
-                _writeByte(SmileConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
+                _writeByte(CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
                 _mediumUTF8Encode(text, offset, offset+len);
                 _writeByte(BYTE_MARKER_END_OF_STRING);
             }
@@ -1028,7 +1028,7 @@ public class CBORGenerator
         } else { // "long" String, never shared
             // but might still fit within buffer?
             byte typeToken = (byteLen == len) ? TOKEN_BYTE_LONG_STRING_ASCII
-                    : SmileConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
+                    : CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
             _writeByte(typeToken);
             _writeBytes(raw, 0, raw.length);
             _writeByte(BYTE_MARKER_END_OF_STRING);
@@ -1076,12 +1076,12 @@ public class CBORGenerator
                 if ((_outputTail + maxLen) >= _outputEnd) {
                     _flushBuffer();
                 }
-                _outputBuffer[_outputTail++] = SmileConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
+                _outputBuffer[_outputTail++] = CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
                 System.arraycopy(text, offset, _outputBuffer, _outputTail, len);
                 _outputTail += len;
                 _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
             } else {
-                _writeByte(SmileConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
+                _writeByte(CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
                 _writeBytes(text, offset, len);
                 _writeByte(BYTE_MARKER_END_OF_STRING);
             }
@@ -1228,7 +1228,7 @@ public class CBORGenerator
     {
         _verifyValueWrite("write number");
     	// First things first: let's zigzag encode number
-        i = SmileUtil.zigzagEncode(i);
+        i = CBORUtil.zigzagEncode(i);
         // tiny (single byte) or small (type + 6-bit value) number?
         if (i <= 0x3F && i >= 0) {
             if (i <= 0x1F) { // tiny 
@@ -1274,7 +1274,7 @@ public class CBORGenerator
         _verifyValueWrite("write number");
         // Then let's zigzag encode it
         
-        l = SmileUtil.zigzagEncode(l);
+        l = CBORUtil.zigzagEncode(l);
         // Ok, well, we do know that 5 lowest-significant bytes are needed
         int i = (int) l;
         // 4 can be extracted from lower int
@@ -1923,7 +1923,7 @@ public class CBORGenerator
      */
     private void _writeSignedVInt(int input) throws IOException
     {
-        _writePositiveVInt(SmileUtil.zigzagEncode(input));
+        _writePositiveVInt(CBORUtil.zigzagEncode(input));
     }
 
     protected void _write7BitBinaryWithLength(byte[] data, int offset, int len) throws IOException
@@ -2136,7 +2136,7 @@ public class CBORGenerator
          */
         {
             SharedStringNode[] nameBuf = _seenNames;
-            if (nameBuf != null && nameBuf.length == SmileBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH) {
+            if (nameBuf != null && nameBuf.length == CBORBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH) {
                 _seenNames = null;
                 /* 28-Jun-2011, tatu: With 1.9, caller needs to clear the buffer; and note
                  *   that since it's a hash area, must clear all
@@ -2149,7 +2149,7 @@ public class CBORGenerator
         }
         {
             SharedStringNode[] valueBuf = _seenStringValues;
-            if (valueBuf != null && valueBuf.length == SmileBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH) {
+            if (valueBuf != null && valueBuf.length == CBORBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH) {
                 _seenStringValues = null;
                 /* 28-Jun-2011, tatu: With 1.9, caller needs to clear the buffer; and note
                  *   that since it's a hash area, must clear all
