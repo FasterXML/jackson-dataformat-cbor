@@ -335,7 +335,7 @@ public class CBORGenerator
      */
     public void writeRaw(byte b) throws IOException, JsonGenerationException
     {
-        _writeByte(TOKEN_LITERAL_START_ARRAY);
+        _writeByte(b);
     }
 
     /**
@@ -360,7 +360,7 @@ public class CBORGenerator
     {
         _verifyValueWrite("start an array");
         _writeContext = _writeContext.createChildArrayContext();
-        _writeByte(TOKEN_LITERAL_START_ARRAY);
+        _writeByte(BYTE_ARRAY_INDEFINITE);
     }
 
     @Override
@@ -369,7 +369,7 @@ public class CBORGenerator
         if (!_writeContext.inArray()) {
             _reportError("Current context not an ARRAY but "+_writeContext.getTypeDesc());
         }
-        _writeByte(TOKEN_LITERAL_END_ARRAY);
+        _writeByte(BYTE_BREAK);
         _writeContext = _writeContext.getParent();
     }
 
@@ -378,7 +378,7 @@ public class CBORGenerator
     {
         _verifyValueWrite("start an object");
         _writeContext = _writeContext.createChildObjectContext();
-        _writeByte(TOKEN_LITERAL_START_OBJECT);
+        _writeByte(BYTE_OBJECT_INDEFINITE);
     }
 
     @Override
@@ -388,7 +388,7 @@ public class CBORGenerator
             _reportError("Current context not an object but "+_writeContext.getTypeDesc());
         }
         _writeContext = _writeContext.getParent();
-        _writeByte(TOKEN_LITERAL_END_OBJECT);
+        _writeByte(BYTE_BREAK);
     }
 
     private final void _writeFieldName(String name)
@@ -899,9 +899,9 @@ public class CBORGenerator
     {
         _verifyValueWrite("write boolean value");
         if (state) {
-            _writeByte(TOKEN_LITERAL_TRUE);
+            _writeByte(BYTE_TRUE);
         } else {
-            _writeByte(TOKEN_LITERAL_FALSE);             
+            _writeByte(BYTE_FALSE);             
         }
     }
 
@@ -909,110 +909,74 @@ public class CBORGenerator
     public void writeNull() throws IOException, JsonGenerationException
     {
         _verifyValueWrite("write null value");
-        _writeByte(TOKEN_LITERAL_NULL);
+        _writeByte(BYTE_FALSE);
     }
 
     @Override
     public void writeNumber(int i) throws IOException, JsonGenerationException
     {
         _verifyValueWrite("write number");
-    	// First things first: let's zigzag encode number
-        i = CBORUtil.zigzagEncode(i);
-        // tiny (single byte) or small (type + 6-bit value) number?
-        if (i <= 0x3F && i >= 0) {
-            if (i <= 0x1F) { // tiny 
-                _writeByte((byte) (TOKEN_PREFIX_SMALL_INT + i));
-                return;
-            }
-            // nope, just small, 2 bytes (type, 1-byte zigzag value) for 6 bit value
-            _writeBytes(TOKEN_BYTE_INT_32, (byte) (0x80 + i));
+        _ensureRoomForOutput(5);
+        int marker;
+        if (i < 0) {
+            i += 1;
+            i = -1;
+            marker = MAJOR_TYPE_INT_NEG;
+        } else {
+            marker = MAJOR_TYPE_INT_POS;
+        }
+
+        if (i < 24) {
+            _outputBuffer[_outputTail++] = (byte) (marker + i);
             return;
         }
-        // Ok: let's find minimal representation then
-        byte b0 = (byte) (0x80 + (i & 0x3F));
-        i >>>= 6;
-        if (i <= 0x7F) { // 13 bits is enough (== 3 byte total encoding)
-            _writeBytes(TOKEN_BYTE_INT_32, (byte) i, b0);
+        if (i <= 0xFF) {
+            _outputBuffer[_outputTail++] = (byte) (marker + 24);
+            _outputBuffer[_outputTail++] = (byte) i;
             return;
         }
-        byte b1 = (byte) (i & 0x7F);
-        i >>= 7;
-        if (i <= 0x7F) {
-            _writeBytes(TOKEN_BYTE_INT_32, (byte) i, b1, b0);
+        final byte b0 = (byte) i;
+        i >>= 8;
+        if (i <= 0xFF) {
+            _outputBuffer[_outputTail++] = (byte) (marker + 25);
+            _outputBuffer[_outputTail++] = (byte) i;
+            _outputBuffer[_outputTail++] = b0;
             return;
         }
-        byte b2 = (byte) (i & 0x7F);
-        i >>= 7;
-        if (i <= 0x7F) {
-            _writeBytes(TOKEN_BYTE_INT_32, (byte) i, b2, b1, b0);
-            return;
-        }
-        // no, need all 5 bytes
-        byte b3 = (byte) (i & 0x7F);
-        _writeBytes(TOKEN_BYTE_INT_32, (byte) (i >> 7), b3, b2, b1, b0);
+        _outputBuffer[_outputTail++] = (byte) (marker + 26);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+        _outputBuffer[_outputTail++] = b0;
     }
 
     @Override
     public void writeNumber(long l) throws IOException, JsonGenerationException
     {
         // First: maybe 32 bits is enough?
-    	if (l <= MAX_INT_AS_LONG && l >= MIN_INT_AS_LONG) {
+        if (l <= MAX_INT_AS_LONG && l >= MIN_INT_AS_LONG) {
             writeNumber((int) l);
             return;
         }
         _verifyValueWrite("write number");
-        // Then let's zigzag encode it
-        
-        l = CBORUtil.zigzagEncode(l);
-        // Ok, well, we do know that 5 lowest-significant bytes are needed
-        int i = (int) l;
-        // 4 can be extracted from lower int
-        byte b0 = (byte) (0x80 + (i & 0x3F)); // sign bit set in the last byte
-        byte b1 = (byte) ((i >> 6) & 0x7F);
-        byte b2 = (byte) ((i >> 13) & 0x7F);
-        byte b3 = (byte) ((i >> 20) & 0x7F);
-        // fifth one is split between ints:
-        l >>>= 27;
-        byte b4 = (byte) (((int) l) & 0x7F);
-
-        // which may be enough?
-        i = (int) (l >> 7);
-        if (i == 0) {
-            _writeBytes(TOKEN_BYTE_INT_64, b4, b3, b2, b1, b0);
-            return;
+        _ensureRoomForOutput(9);
+        if (l < 0) {
+            l += 1;
+            l = -1;
+            _outputBuffer[_outputTail++] = (MAJOR_TYPE_INT_NEG + 27);
+        } else {
+            _outputBuffer[_outputTail++] = (MAJOR_TYPE_INT_POS + 27);
         }
-
-        if (i <= 0x7F) {
-            _writeBytes(TOKEN_BYTE_INT_64, (byte) i);
-            _writeBytes(b4, b3, b2, b1, b0);
-            return;
-        }
-        byte b5 = (byte) (i & 0x7F);
-        i >>= 7;
-        if (i <= 0x7F) {
-            _writeBytes(TOKEN_BYTE_INT_64, (byte) i);
-            _writeBytes(b5, b4, b3, b2, b1, b0);
-            return;
-        }
-        byte b6 = (byte) (i & 0x7F);
-        i >>= 7;
-        if (i <= 0x7F) {
-            _writeBytes(TOKEN_BYTE_INT_64, (byte) i, b6);
-            _writeBytes(b5, b4, b3, b2, b1, b0);
-            return;
-        }
-        byte b7 = (byte) (i & 0x7F);
-        i >>= 7;
-        if (i <= 0x7F) {
-            _writeBytes(TOKEN_BYTE_INT_64, (byte) i, b7, b6);
-            _writeBytes(b5, b4, b3, b2, b1, b0);
-            return;
-        }
-        byte b8 = (byte) (i & 0x7F);
-        i >>= 7;
-        // must be done, with 10 bytes! (9 * 7 + 6 == 69 bits; only need 63)
-        _writeBytes(TOKEN_BYTE_INT_64, (byte) i, b8, b7, b6);
-        _writeBytes(b5, b4, b3, b2, b1, b0);
+        int i = (int) (l >> 32);
+        _outputBuffer[_outputTail++] = (byte) (i >> 24);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+        i = (int) l;
+        _outputBuffer[_outputTail++] = (byte) (i >> 24);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
     }
 
     @Override
@@ -1023,54 +987,41 @@ public class CBORGenerator
             return;
         }
         _verifyValueWrite("write number");
+
+        /*
         // quite simple: type, and then VInt-len prefixed 7-bit encoded binary data:
         _writeByte(TOKEN_BYTE_BIG_INTEGER);
 
-        // !!! TODO
 //        _write7BitBinaryWithLength(data, 0, data.length);
 //        byte[] data = v.toByteArray();
+ */
+
+        // !!! TODO
     }
     
     @Override
     public void writeNumber(double d) throws IOException, JsonGenerationException
     {
-        // Ok, now, we needed token type byte plus 10 data bytes (7 bits each)
-        _ensureRoomForOutput(11);
         _verifyValueWrite("write number");
+        _ensureRoomForOutput(11);
         /* 17-Apr-2010, tatu: could also use 'doubleToIntBits', but it seems more accurate to use
          * exact representation; and possibly faster. However, if there are cases
          * where collapsing of NaN was needed (for non-Java clients), this can
          * be changed
          */
         long l = Double.doubleToRawLongBits(d);
-        _outputBuffer[_outputTail++] = TOKEN_BYTE_FLOAT_64;
-        // Handle first 29 bits (single bit first, then 4 x 7 bits)
-        int hi5 = (int) (l >>> 35);
-        _outputBuffer[_outputTail+4] = (byte) (hi5 & 0x7F);
-        hi5 >>= 7;
-        _outputBuffer[_outputTail+3] = (byte) (hi5 & 0x7F);
-        hi5 >>= 7;
-        _outputBuffer[_outputTail+2] = (byte) (hi5 & 0x7F);
-        hi5 >>= 7;
-        _outputBuffer[_outputTail+1] = (byte) (hi5 & 0x7F);
-        hi5 >>= 7;
-        _outputBuffer[_outputTail] = (byte) hi5;
-        _outputTail += 5;
-        // Then split byte (one that crosses lo/hi int boundary), 7 bits
-        {
-            int mid = (int) (l >> 28);
-            _outputBuffer[_outputTail++] = (byte) (mid & 0x7F);
-        }
-        // and then last 4 bytes (28 bits)
-        int lo4 = (int) l;
-        _outputBuffer[_outputTail+3] = (byte) (lo4 & 0x7F);
-        lo4 >>= 7;
-        _outputBuffer[_outputTail+2] = (byte) (lo4 & 0x7F);
-        lo4 >>= 7;
-        _outputBuffer[_outputTail+1] = (byte) (lo4 & 0x7F);
-        lo4 >>= 7;
-        _outputBuffer[_outputTail] = (byte) (lo4 & 0x7F);
-        _outputTail += 4;
+        _outputBuffer[_outputTail++] = BYTE_FLOAT64;
+
+        int i = (int) (l >> 32);
+        _outputBuffer[_outputTail++] = (byte) (i >> 24);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+        i = (int) l;
+        _outputBuffer[_outputTail++] = (byte) (i >> 24);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
     }
 
     @Override
@@ -1086,17 +1037,11 @@ public class CBORGenerator
          * be changed
          */
         int i = Float.floatToRawIntBits(f);
-        _outputBuffer[_outputTail++] = TOKEN_BYTE_FLOAT_32;
-        _outputBuffer[_outputTail+4] = (byte) (i & 0x7F);
-        i >>= 7;
-        _outputBuffer[_outputTail+3] = (byte) (i & 0x7F);
-        i >>= 7;
-        _outputBuffer[_outputTail+2] = (byte) (i & 0x7F);
-        i >>= 7;
-        _outputBuffer[_outputTail+1] = (byte) (i & 0x7F);
-        i >>= 7;
-        _outputBuffer[_outputTail] = (byte) (i & 0x7F);
-        _outputTail += 5;
+        _outputBuffer[_outputTail++] = BYTE_FLOAT64;
+        _outputBuffer[_outputTail++] = (byte) (i >> 24);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
     }
 
     @Override
@@ -1107,10 +1052,13 @@ public class CBORGenerator
             return;
         }
         _verifyValueWrite("write number");
+
+        /*
         _writeByte(TOKEN_BYTE_BIG_DECIMAL);
+        */
         int scale = dec.scale();
         // Ok, first output scale as VInt
-        _writeSignedVInt(scale);
+//        _writeSignedVInt(scale);
         BigInteger unscaled = dec.unscaledValue();
         // And then binary data in "safe" mode (7-bit values)
 //        _write7BitBinaryWithLength(data, 0, data.length);
@@ -1122,10 +1070,8 @@ public class CBORGenerator
     @Override
     public void writeNumber(String encodedValue) throws IOException,JsonGenerationException, UnsupportedOperationException
     {
-        /* 17-Apr-2010, tatu: Could try parsing etc; but for now let's not bother, it could
-         *   just be some non-standard representation that caller wants to pass
-         */
-        throw _notSupported();
+        // just write as a String then?
+        writeString(encodedValue);
     }
 
     /*
@@ -1162,9 +1108,6 @@ public class CBORGenerator
     @Override
     public void close() throws IOException
     {
-        /* 05-Dec-2008, tatu: To add [JACKSON-27], need to close open
-         *   scopes.
-         */
         // First: let's see that we still have buffers...
         if (_outputBuffer != null
             && isEnabled(JsonGenerator.Feature.AUTO_CLOSE_JSON_CONTENT)) {
@@ -1464,6 +1407,7 @@ public class CBORGenerator
         _outputBuffer[_outputTail++] = b;
     }
 
+    /*
     private final void _writeBytes(byte b1, byte b2) throws IOException
     {
         if ((_outputTail + 1) >= _outputEnd) {
@@ -1472,52 +1416,7 @@ public class CBORGenerator
         _outputBuffer[_outputTail++] = b1;
         _outputBuffer[_outputTail++] = b2;
     }
-
-    private final void _writeBytes(byte b1, byte b2, byte b3) throws IOException
-    {
-        if ((_outputTail + 2) >= _outputEnd) {
-            _flushBuffer();
-        }
-        _outputBuffer[_outputTail++] = b1;
-        _outputBuffer[_outputTail++] = b2;
-        _outputBuffer[_outputTail++] = b3;
-    }
-
-    private final void _writeBytes(byte b1, byte b2, byte b3, byte b4) throws IOException
-    {
-        if ((_outputTail + 3) >= _outputEnd) {
-            _flushBuffer();
-        }
-        _outputBuffer[_outputTail++] = b1;
-        _outputBuffer[_outputTail++] = b2;
-        _outputBuffer[_outputTail++] = b3;
-        _outputBuffer[_outputTail++] = b4;
-    }
-
-    private final void _writeBytes(byte b1, byte b2, byte b3, byte b4, byte b5) throws IOException
-    {
-        if ((_outputTail + 4) >= _outputEnd) {
-            _flushBuffer();
-        }
-        _outputBuffer[_outputTail++] = b1;
-        _outputBuffer[_outputTail++] = b2;
-        _outputBuffer[_outputTail++] = b3;
-        _outputBuffer[_outputTail++] = b4;
-        _outputBuffer[_outputTail++] = b5;
-    }
-
-    private final void _writeBytes(byte b1, byte b2, byte b3, byte b4, byte b5, byte b6) throws IOException
-    {
-        if ((_outputTail + 5) >= _outputEnd) {
-            _flushBuffer();
-        }
-        _outputBuffer[_outputTail++] = b1;
-        _outputBuffer[_outputTail++] = b2;
-        _outputBuffer[_outputTail++] = b3;
-        _outputBuffer[_outputTail++] = b4;
-        _outputBuffer[_outputTail++] = b5;
-        _outputBuffer[_outputTail++] = b6;
-    }
+    */
 
     private final void _writeBytes(byte[] data, int offset, int len) throws IOException
     {
@@ -1566,59 +1465,6 @@ public class CBORGenerator
             offset += currLen;
             _flushBuffer();
         }
-    }
-
-    /**
-     * Helper method for writing a 32-bit positive (really 31-bit then) value.
-     * Value is NOT zigzag encoded (since there is no sign bit to worry about)
-     */
-    private void _writePositiveVInt(int i) throws IOException
-    {
-        // At most 5 bytes (4 * 7 + 6 bits == 34 bits)
-        _ensureRoomForOutput(5);
-        byte b0 = (byte) (0x80 + (i & 0x3F));
-        i >>= 6;
-        if (i <= 0x7F) { // 6 or 13 bits is enough (== 2 or 3 byte total encoding)
-            if (i > 0) {
-                _outputBuffer[_outputTail++] = (byte) i;
-            }
-            _outputBuffer[_outputTail++] = b0;
-            return;
-        }
-        byte b1 = (byte) (i & 0x7F);
-        i >>= 7;
-        if (i <= 0x7F) {
-            _outputBuffer[_outputTail++] = (byte) i;
-            _outputBuffer[_outputTail++] = b1;
-            _outputBuffer[_outputTail++] = b0;            
-        } else {
-            byte b2 = (byte) (i & 0x7F);
-            i >>= 7;
-            if (i <= 0x7F) {
-                _outputBuffer[_outputTail++] = (byte) i;
-                _outputBuffer[_outputTail++] = b2;
-                _outputBuffer[_outputTail++] = b1;
-                _outputBuffer[_outputTail++] = b0;            
-            } else {
-                byte b3 = (byte) (i & 0x7F);
-                _outputBuffer[_outputTail++] = (byte) (i >> 7);
-                _outputBuffer[_outputTail++] = b3;
-                _outputBuffer[_outputTail++] = b2;
-                _outputBuffer[_outputTail++] = b1;
-                _outputBuffer[_outputTail++] = b0;            
-            }
-        }
-    }
-
-    /**
-     * Helper method for writing 32-bit signed value, using
-     * "zig zag encoding" (see protocol buffers for explanation -- basically,
-     * sign bit is moved as LSB, rest of value shifted left by one)
-     * coupled with basic variable length encoding
-     */
-    private void _writeSignedVInt(int input) throws IOException
-    {
-        _writePositiveVInt(CBORUtil.zigzagEncode(input));
     }
 
     /*

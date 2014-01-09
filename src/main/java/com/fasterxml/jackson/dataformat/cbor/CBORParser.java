@@ -245,6 +245,7 @@ public class CBORParser
         if (consumeFirstByte) {
             ++_inputPtr;
         }
+        /*
         if (_inputPtr >= _inputEnd) {
             loadMoreGuaranteed();
         }
@@ -287,6 +288,7 @@ public class CBORParser
             _seenStringValueCount = 0;
         }
         _mayContainRawBinary = ((ch & CBORConstants.HEADER_BIT_HAS_RAW_BINARY) != 0);
+        */
         return true;
     }
 
