@@ -1,10 +1,8 @@
 package com.fasterxml.jackson.dataformat.cbor;
 
 import java.io.*;
-import java.lang.ref.SoftReference;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.Arrays;
 
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.io.*;
@@ -26,61 +24,9 @@ public class CBORGenerator
      */
     public enum Feature {
         /**
-         * Whether to write 4-byte header sequence when starting output or not.
-         * If disabled, no header is written; this may be useful in embedded cases
-         * where context is enough to know that content is encoded using this format.
-         * Note, however, that omitting header means that default settings for
-         * shared names/string values can not be changed.
-         *<p>
-         * Default setting is true, meaning that header will be written.
+         * Placeholder before any format-specific features are added.
          */
-        WRITE_HEADER(true),
-
-        /**
-         * Whether write byte marker that signifies end of logical content segment
-         * ({@link CBORConstants#BYTE_MARKER_END_OF_CONTENT}) when
-         * {@link #close} is called or not. This can be useful when outputting
-         * multiple adjacent logical content segments (documents) into single
-         * physical output unit (file).
-         *<p>
-         * Default setting is false meaning that such marker is not written.
-         */
-        WRITE_END_MARKER(false),
-        
-        /**
-         * Whether to use simple 7-bit per byte encoding for binary content when output.
-         * This is necessary ensure that byte 0xFF will never be included in content output.
-         * For other data types this limitation is handled automatically; but since overhead
-         * for binary data (14% size expansion, processing overhead) is non-negligible,
-         * it is not enabled by default. If no binary data is output, feature has no effect.
-         *<p>
-         * Default setting is true, indicating that binary data is quoted as 7-bit bytes
-         * instead of written raw.
-         */
-        ENCODE_BINARY_AS_7BIT(true),
-
-        /**
-         * Whether generator should check if it can "share" field names during generating
-         * content or not. If enabled, can replace repeating field names with back references,
-         * which are more compact and should faster to decode. Downside is that there is some
-         * overhead for writing (need to track existing values, check), as well as decoding.
-         *<p>
-         * Since field names tend to repeat quite often, this setting is enabled by default.
-         */
-        CHECK_SHARED_NAMES(true),
-
-        /**
-         * Whether generator should check if it can "share" short (at most 64 bytes encoded)
-         * String value during generating
-         * content or not. If enabled, can replace repeating Short String values with back references,
-         * which are more compact and should faster to decode. Downside is that there is some
-         * overhead for writing (need to track existing values, check), as well as decoding.
-         *<p>
-         * Since efficiency of this option depends a lot on type of content being produced,
-         * this option is disabled by default, and should only be enabled if it is likely that
-         * same values repeat relatively often.
-         */
-        CHECK_SHARED_STRING_VALUES(false)
+        BOGUS(true),
         ;
 
         protected final boolean _defaultState;
@@ -108,24 +54,6 @@ public class CBORGenerator
         
         public boolean enabledByDefault() { return _defaultState; }
         public int getMask() { return _mask; }
-    }
-
-    /**
-     * Helper class used for keeping track of possibly shareable String
-     * references (for field names and/or short String values)
-     */
-    protected final static class SharedStringNode
-    {
-        public final String value;
-        public final int index;
-        public SharedStringNode next;
-        
-        public SharedStringNode(String value, int index, SharedStringNode next)
-        {
-            this.value = value;
-            this.index = index;
-            this.next = next;
-        }
     }
     
     /**
@@ -173,13 +101,7 @@ public class CBORGenerator
      * {@link com.fasterxml.jackson.CBORGenerator.smile.SmileGenerator.Feature}s
      * are enabled.
      */
-    protected int _smileFeatures;
-
-    /**
-     * Helper object used for low-level recycling of Smile-generator
-     * specific buffers.
-     */
-    final protected CBORBufferRecycler<SharedStringNode> _smileBufferRecycler;
+    protected int _formatFeatures;
     
     /*
     /**********************************************************
@@ -227,48 +149,10 @@ public class CBORGenerator
      */
 
     /**
-     * Raw data structure used for checking whether field name to
-     * write can be output using back reference or not.
-     */
-    protected SharedStringNode[] _seenNames;
-    
-    /**
-     * Number of entries in {@link #_seenNames}; -1 if no shared name
-     * detection is enabled
-     */
-    protected int _seenNameCount;
-
-    /**
-     * Raw data structure used for checking whether String value to
-     * write can be output using back reference or not.
-     */
-    protected SharedStringNode[] _seenStringValues;
-    
-    /**
-     * Number of entries in {@link #_seenStringValues}; -1 if no shared text value
-     * detection is enabled
-     */
-    protected int _seenStringValueCount;
-
-    /**
      * Flag that indicates whether the output buffer is recycable (and
      * needs to be returned to recycler once we are done) or not.
      */
     protected boolean _bufferRecyclable;
-
-    /*
-    /**********************************************************
-    /* Thread-local recycling
-    /**********************************************************
-     */
-    
-    /**
-     * This <code>ThreadLocal</code> contains a {@link java.lang.ref.SoftReference}
-     * to a buffer recycler used to provide a low-cost
-     * buffer recycling for Smile-specific buffers.
-     */
-    final protected static ThreadLocal<SoftReference<CBORBufferRecycler<SharedStringNode>>> _smileRecyclerRef
-        = new ThreadLocal<SoftReference<CBORBufferRecycler<SharedStringNode>>>();
     
     /*
     /**********************************************************
@@ -280,9 +164,8 @@ public class CBORGenerator
             ObjectCodec codec, OutputStream out)
     {
         super(jsonFeatures, codec);
-        _smileFeatures = smileFeatures;
+        _formatFeatures = smileFeatures;
         _ioContext = ctxt;
-        _smileBufferRecycler = _smileBufferRecycler();
         _out = out;
         _bufferRecyclable = true;
         _outputBuffer = ctxt.allocWriteEncodingBuffer();
@@ -294,36 +177,14 @@ public class CBORGenerator
             throw new IllegalStateException("Internal encoding buffer length ("+_outputEnd
                     +") too short, must be at least "+MIN_BUFFER_LENGTH);
         }
-        if ((smileFeatures & Feature.CHECK_SHARED_NAMES.getMask()) == 0) {
-            _seenNames = null;
-            _seenNameCount = -1;
-        } else {
-            _seenNames = _smileBufferRecycler.allocSeenNamesBuffer();
-            if (_seenNames == null) {
-                _seenNames = new SharedStringNode[CBORBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH];
-            }
-            _seenNameCount = 0;
-        }
-
-        if ((smileFeatures & Feature.CHECK_SHARED_STRING_VALUES.getMask()) == 0) {
-            _seenStringValues = null;
-            _seenStringValueCount = -1;
-        } else {
-            _seenStringValues = _smileBufferRecycler.allocSeenStringValuesBuffer();
-            if (_seenStringValues == null) {
-                _seenStringValues = new SharedStringNode[CBORBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH];
-            }
-            _seenStringValueCount = 0;
-        }
-}
+    }
 
     public CBORGenerator(IOContext ctxt, int jsonFeatures, int smileFeatures,
             ObjectCodec codec, OutputStream out, byte[] outputBuffer, int offset, boolean bufferRecyclable)
     {
         super(jsonFeatures, codec);
-        _smileFeatures = smileFeatures;
+        _formatFeatures = smileFeatures;
         _ioContext = ctxt;
-        _smileBufferRecycler = _smileBufferRecycler();
         _out = out;
         _bufferRecyclable = bufferRecyclable;
         _outputTail = offset;
@@ -336,61 +197,6 @@ public class CBORGenerator
             throw new IllegalStateException("Internal encoding buffer length ("+_outputEnd
                     +") too short, must be at least "+MIN_BUFFER_LENGTH);
         }
-        if ((smileFeatures & Feature.CHECK_SHARED_NAMES.getMask()) == 0) {
-            _seenNames = null;
-            _seenNameCount = -1;
-        } else {
-            _seenNames = _smileBufferRecycler.allocSeenNamesBuffer();
-            if (_seenNames == null) {
-                _seenNames = new SharedStringNode[CBORBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH];
-            }
-            _seenNameCount = 0;
-        }
-
-        if ((smileFeatures & Feature.CHECK_SHARED_STRING_VALUES.getMask()) == 0) {
-            _seenStringValues = null;
-            _seenStringValueCount = -1;
-        } else {
-            _seenStringValues = _smileBufferRecycler.allocSeenStringValuesBuffer();
-            if (_seenStringValues == null) {
-                _seenStringValues = new SharedStringNode[CBORBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH];
-            }
-            _seenStringValueCount = 0;
-        }
-    }
-
-    /**
-     * Method that can be called to explicitly write Smile document header.
-     * Note that usually you do not need to call this for first document to output, 
-     * but rather only if you intend to write multiple root-level documents
-     * with same generator (and even in that case this is optional thing to do).
-     * As a result usually only {@link CBORFactory} calls this method.
-     */
-    public void writeHeader() throws IOException
-    {
-    	int last = HEADER_BYTE_4;
-        if ((_smileFeatures & Feature.CHECK_SHARED_NAMES.getMask()) != 0) {
-            last |= CBORConstants.HEADER_BIT_HAS_SHARED_NAMES;
-        }
-        if ((_smileFeatures & Feature.CHECK_SHARED_STRING_VALUES.getMask()) != 0) {
-            last |= CBORConstants.HEADER_BIT_HAS_SHARED_STRING_VALUES;
-        }
-        if ((_smileFeatures & Feature.ENCODE_BINARY_AS_7BIT.getMask()) == 0) {
-            last |= CBORConstants.HEADER_BIT_HAS_RAW_BINARY;
-        }
-        _writeBytes(HEADER_BYTE_1, HEADER_BYTE_2, HEADER_BYTE_3, (byte) last);
-    }
-
-    protected final static CBORBufferRecycler<SharedStringNode> _smileBufferRecycler()
-    {
-        SoftReference<CBORBufferRecycler<SharedStringNode>> ref = _smileRecyclerRef.get();
-        CBORBufferRecycler<SharedStringNode> br = (ref == null) ? null : ref.get();
-
-        if (br == null) {
-            br = new CBORBufferRecycler<SharedStringNode>();
-            _smileRecyclerRef.set(new SoftReference<CBORBufferRecycler<SharedStringNode>>(br));
-        }
-        return br;
     }
 
     /*                                                                                       
@@ -493,17 +299,17 @@ public class CBORGenerator
      */
 
     public CBORGenerator enable(Feature f) {
-        _smileFeatures |= f.getMask();
+        _formatFeatures |= f.getMask();
         return this;
     }
 
     public CBORGenerator disable(Feature f) {
-        _smileFeatures &= ~f.getMask();
+        _formatFeatures &= ~f.getMask();
         return this;
     }
 
     public final boolean isEnabled(Feature f) {
-        return (_smileFeatures & f.getMask()) != 0;
+        return (_formatFeatures & f.getMask()) != 0;
     }
 
     public CBORGenerator configure(Feature f, boolean state) {
@@ -593,14 +399,6 @@ public class CBORGenerator
             _writeByte(TOKEN_KEY_EMPTY_STRING);
             return;
         }
-        // First: is it something we can share?
-        if (_seenNameCount >= 0) {
-            int ix = _findSeenName(name);
-            if (ix >= 0) {
-                _writeSharedNameReference(ix);
-                return;
-            }
-        }
         if (len > MAX_SHORT_NAME_UNICODE_BYTES) { // can not be a 'short' String; off-line (rare case)
             _writeNonShortFieldName(name, len);
             return;
@@ -638,10 +436,6 @@ public class CBORGenerator
         }
         // and then sneak in type token now that know the details
         _outputBuffer[origOffset] = typeToken;
-        // Also, keep track if we can use back-references (shared names)
-        if (_seenNameCount >= 0) {
-            _addSeenName(name);
-        }
     }
 
     private final void _writeNonShortFieldName(final String name, final int len)
@@ -664,9 +458,6 @@ public class CBORGenerator
                 _mediumUTF8Encode(_charBuffer, 0, len);
             }
         }
-        if (_seenNameCount >= 0) {
-            _addSeenName(name);
-        }
         if (_outputTail >= _outputEnd) {
             _flushBuffer();
         }
@@ -680,14 +471,6 @@ public class CBORGenerator
         if (charLen == 0) {
             _writeByte(TOKEN_KEY_EMPTY_STRING);
             return;
-        }
-        // Then: is it something we can share?
-        if (_seenNameCount >= 0) {
-            int ix = _findSeenName(name.getValue());
-            if (ix >= 0) {
-                _writeSharedNameReference(ix);
-                return;
-            }
         }
         final byte[] bytes = name.asUnquotedUTF8();
         final int byteLen = bytes.length;
@@ -706,10 +489,6 @@ public class CBORGenerator
             _outputTail += byteLen;
         } else {
             _writeLongAsciiFieldName(bytes);
-        }
-        // Also, keep track if we can use back-references (shared names)
-        if (_seenNameCount >= 0) {
-            _addSeenName(name.getValue());
         }
     }
 
@@ -758,10 +537,6 @@ public class CBORGenerator
 
             System.arraycopy(bytes, 0, _outputBuffer, _outputTail, byteLen);
             _outputTail += byteLen;
-            // Also, keep track if we can use back-references (shared names)
-            if (_seenNameCount >= 0) {
-                _addSeenName(name.getValue());
-            }
             return;
         }
         if (_outputTail >= _outputEnd) {
@@ -788,27 +563,8 @@ public class CBORGenerator
             }
         }
         _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
-        // Also, keep track if we can use back-references (shared names)
-        if (_seenNameCount >= 0) {
-            _addSeenName(name.getValue());
-        }
     }
 
-    private final void _writeSharedNameReference(int ix)
-        throws IOException,JsonGenerationException
-    {
-        // 03-Mar-2011, tatu: Related to [JACKSON-525], let's add a sanity check here
-        if (ix >= _seenNameCount) {
-            throw new IllegalArgumentException("Internal error: trying to write shared name with index "+ix
-                    +"; but have only seen "+_seenNameCount+" so far!");
-        }
-        if (ix < 64) {
-            _writeByte((byte) (TOKEN_PREFIX_KEY_SHARED_SHORT + ix));
-        } else {
-            _writeBytes(((byte) (TOKEN_PREFIX_KEY_SHARED_LONG + (ix >> 8))), (byte) ix);
-        } 
-    }    
-    
     /*
     /**********************************************************
     /* Output method implementations, textual
@@ -833,15 +589,6 @@ public class CBORGenerator
             _writeNonSharedString(text, len);
             return;
         }
-        // Then: is it something we can share?
-        if (_seenStringValueCount >= 0) {
-            int ix = _findSeenStringValue(text);
-            if (ix >= 0) {
-                _writeSharedStringValueReference(ix);
-                return;
-            }
-        }
-            
         // possibly short string (but not necessarily)
         // first: ensure we have enough space
         if ((_outputTail + MIN_BUFFER_FOR_POSSIBLE_SHORT_STRING) >= _outputEnd) {
@@ -853,10 +600,6 @@ public class CBORGenerator
         ++_outputTail; // to leave room for type token
         int byteLen = _shortUTF8Encode(_charBuffer, 0, len);
         if (byteLen <= MAX_SHORT_VALUE_STRING_BYTES) { // yes, is short indeed
-            // plus keep reference, if it could be shared:
-            if (_seenStringValueCount >= 0) {
-                _addSeenStringValue(text);
-            }
             if (byteLen == len) { // and all ASCII
                 _outputBuffer[origOffset] = (byte) ((TOKEN_PREFIX_TINY_ASCII - 1) + byteLen);
             } else { // not just ASCII
@@ -871,21 +614,6 @@ public class CBORGenerator
         }
     }
 
-    private final void _writeSharedStringValueReference(int ix)
-        throws IOException,JsonGenerationException
-    {
-        // 03-Mar-2011, tatu: Related to [JACKSON-525], let's add a sanity check here
-        if (ix >= _seenStringValueCount) {
-            throw new IllegalArgumentException("Internal error: trying to write shared String value with index "+ix
-                    +"; but have only seen "+_seenStringValueCount+" so far!");
-        }
-        if (ix < 31) { // add 1, as byte 0 is omitted
-            _writeByte((byte) (TOKEN_PREFIX_SHARED_STRING_SHORT + 1 + ix));
-        } else {
-            _writeBytes(((byte) (TOKEN_PREFIX_SHARED_STRING_LONG + (ix >> 8))), (byte) ix);
-        }
-    }    
-    
     /**
      * Helper method called to handle cases where String value to write is known
      * to be long enough not to be shareable.
@@ -929,11 +657,6 @@ public class CBORGenerator
     @Override
     public void writeString(char[] text, int offset, int len) throws IOException, JsonGenerationException
     {
-        // Shared strings are tricky; easiest to just construct String, call the other method
-        if (len <= MAX_SHARED_STRING_LENGTH_BYTES && _seenStringValueCount >= 0 && len > 0) {
-            writeString(new String(text, offset, len));
-            return;
-        }
         _verifyValueWrite("write String value");
         if (len == 0) {
             _writeByte(TOKEN_LITERAL_EMPTY_STRING);
@@ -996,14 +719,6 @@ public class CBORGenerator
             _writeByte(TOKEN_LITERAL_EMPTY_STRING);
             return;
         }
-        // Second: something we can share?
-        if (len <= MAX_SHARED_STRING_LENGTH_BYTES && _seenStringValueCount >= 0) {
-            int ix = _findSeenStringValue(str);
-            if (ix >= 0) {
-                _writeSharedStringValueReference(ix);
-                return;
-            }
-        }
         // If not, use pre-encoded version
         byte[] raw = sstr.asUnquotedUTF8();
         final int byteLen = raw.length;
@@ -1021,10 +736,6 @@ public class CBORGenerator
             _outputBuffer[_outputTail++] = (byte) typeToken;
             System.arraycopy(raw, 0, _outputBuffer, _outputTail, byteLen);
             _outputTail += byteLen;
-            // plus keep reference, if it could be shared:
-            if (_seenStringValueCount >= 0) {
-                _addSeenStringValue(sstr.getValue());
-            }
         } else { // "long" String, never shared
             // but might still fit within buffer?
             byte typeToken = (byteLen == len) ? TOKEN_BYTE_LONG_STRING_ASCII
@@ -1045,10 +756,6 @@ public class CBORGenerator
             _writeByte(TOKEN_LITERAL_EMPTY_STRING);
             return;
         }
-        // Sanity check: shared-strings incompatible with raw String writing
-        if (_seenStringValueCount >= 0) {
-            throw new UnsupportedOperationException("Can not use direct UTF-8 write methods when 'Feature.CHECK_SHARED_STRING_VALUES' enabled");
-        } 
         /* Other practical limitation is that we do not really know if it might be
          * ASCII or not; and figuring it out is rather slow. So, best we can do is
          * to declare we do not know it is ASCII (i.e. "is Unicode").
@@ -1058,9 +765,6 @@ public class CBORGenerator
             if ((_outputTail + len) >= _outputEnd) { // bytes, plus one for type indicator
                 _flushBuffer();
             }
-            /* 11-Feb-2011, tatu: As per [JACKSON-492], mininum length for "Unicode"
-             *    String is 2; 1 byte length must be ASCII.
-             */
             if (len == 1) {
                 _outputBuffer[_outputTail++] = TOKEN_PREFIX_TINY_ASCII; // length of 1 cancels out (len-1)
                 _outputBuffer[_outputTail++] = text[offset];
@@ -1151,15 +855,10 @@ public class CBORGenerator
             return;
         }
         _verifyValueWrite("write Binary value");
-        if (isEnabled(Feature.ENCODE_BINARY_AS_7BIT)) {
-            _writeByte(TOKEN_MISC_BINARY_7BIT);
-            _write7BitBinaryWithLength(data, offset, len);
-        } else {
-            _writeByte(TOKEN_MISC_BINARY_RAW);
-            _writePositiveVInt(len);
-            // raw is dead simple of course:
-            _writeBytes(data, offset, len);
-        }
+        _writeByte(TOKEN_MISC_BINARY_RAW);
+        _writePositiveVInt(len);
+        // raw is dead simple of course:
+        _writeBytes(data, offset, len);
     }
 
     @Override
@@ -1172,20 +871,10 @@ public class CBORGenerator
         }
         _verifyValueWrite("write Binary value");
         int missing;
-        if (isEnabled(Feature.ENCODE_BINARY_AS_7BIT)) {
-            _writeByte(TOKEN_MISC_BINARY_7BIT);
-            byte[] encodingBuffer = _ioContext.allocBase64Buffer();
-            try {
-                missing = _write7BitBinaryWithLength(data, dataLength, encodingBuffer);
-            } finally {
-                _ioContext.releaseBase64Buffer(encodingBuffer);
-            }
-        } else {
-            _writeByte(TOKEN_MISC_BINARY_RAW );
-            _writePositiveVInt(dataLength);
-            // raw is dead simple of course:
-            missing = _writeBytes(data, dataLength);
-        }
+        _writeByte(TOKEN_MISC_BINARY_RAW );
+        _writePositiveVInt(dataLength);
+        // raw is dead simple of course:
+        missing = _writeBytes(data, dataLength);
         if (missing > 0) {
             _reportError("Too few bytes available: missing "+missing+" bytes (out of "+dataLength+")");
         }
@@ -1336,8 +1025,10 @@ public class CBORGenerator
         _verifyValueWrite("write number");
         // quite simple: type, and then VInt-len prefixed 7-bit encoded binary data:
         _writeByte(TOKEN_BYTE_BIG_INTEGER);
-        byte[] data = v.toByteArray();
-        _write7BitBinaryWithLength(data, 0, data.length);
+
+        // !!! TODO
+//        _write7BitBinaryWithLength(data, 0, data.length);
+//        byte[] data = v.toByteArray();
     }
     
     @Override
@@ -1421,9 +1112,11 @@ public class CBORGenerator
         // Ok, first output scale as VInt
         _writeSignedVInt(scale);
         BigInteger unscaled = dec.unscaledValue();
-        byte[] data = unscaled.toByteArray();
         // And then binary data in "safe" mode (7-bit values)
-        _write7BitBinaryWithLength(data, 0, data.length);
+//        _write7BitBinaryWithLength(data, 0, data.length);
+
+        // !!! TODO
+//        byte[] data = unscaled.toByteArray();
     }
 
     @Override
@@ -1486,12 +1179,14 @@ public class CBORGenerator
                 }
             }
         }
-        boolean wasClosed = _closed;
+//        boolean wasClosed = _closed;
         super.close();
 
+        /*
         if (!wasClosed && isEnabled(Feature.WRITE_END_MARKER)) {
             _writeByte(BYTE_MARKER_END_OF_CONTENT);
         }
+        */
         _flushBuffer();
 
         if (_ioContext.isResourceManaged() || isEnabled(JsonGenerator.Feature.AUTO_CLOSE_TARGET)) {
@@ -1926,192 +1621,6 @@ public class CBORGenerator
         _writePositiveVInt(CBORUtil.zigzagEncode(input));
     }
 
-    protected void _write7BitBinaryWithLength(byte[] data, int offset, int len) throws IOException
-    {
-        _writePositiveVInt(len);
-        // first, let's handle full 7-byte chunks
-        while (len >= 7) {
-            if ((_outputTail + 8) >= _outputEnd) {
-                _flushBuffer();
-            }
-            int i = data[offset++]; // 1st byte
-            _outputBuffer[_outputTail++] = (byte) ((i >> 1) & 0x7F);
-            i = (i << 8) | (data[offset++] & 0xFF); // 2nd
-            _outputBuffer[_outputTail++] = (byte) ((i >> 2) & 0x7F);
-            i = (i << 8) | (data[offset++] & 0xFF); // 3rd
-            _outputBuffer[_outputTail++] = (byte) ((i >> 3) & 0x7F);
-            i = (i << 8) | (data[offset++] & 0xFF); // 4th
-            _outputBuffer[_outputTail++] = (byte) ((i >> 4) & 0x7F);
-            i = (i << 8) | (data[offset++] & 0xFF); // 5th
-            _outputBuffer[_outputTail++] = (byte) ((i >> 5) & 0x7F);
-            i = (i << 8) | (data[offset++] & 0xFF); // 6th
-            _outputBuffer[_outputTail++] = (byte) ((i >> 6) & 0x7F);
-            i = (i << 8) | (data[offset++] & 0xFF); // 7th
-            _outputBuffer[_outputTail++] = (byte) ((i >> 7) & 0x7F);
-            _outputBuffer[_outputTail++] = (byte) (i & 0x7F);
-            len -= 7;
-        }
-        // and then partial piece, if any
-        if (len > 0) {
-            // up to 6 bytes to output, resulting in at most 7 bytes (which can encode 49 bits)
-            if ((_outputTail + 7) >= _outputEnd) {
-                _flushBuffer();
-            }
-            int i = data[offset++];
-            _outputBuffer[_outputTail++] = (byte) ((i >> 1) & 0x7F);
-            if (len > 1) {
-                i = ((i & 0x01) << 8) | (data[offset++] & 0xFF); // 2nd
-                _outputBuffer[_outputTail++] = (byte) ((i >> 2) & 0x7F);
-                if (len > 2) {
-                    i = ((i & 0x03) << 8) | (data[offset++] & 0xFF); // 3rd
-                    _outputBuffer[_outputTail++] = (byte) ((i >> 3) & 0x7F);
-                    if (len > 3) {
-                        i = ((i & 0x07) << 8) | (data[offset++] & 0xFF); // 4th
-                        _outputBuffer[_outputTail++] = (byte) ((i >> 4) & 0x7F);
-                        if (len > 4) {
-                            i = ((i & 0x0F) << 8) | (data[offset++] & 0xFF); // 5th
-                            _outputBuffer[_outputTail++] = (byte) ((i >> 5) & 0x7F);
-                            if (len > 5) {
-                                i = ((i & 0x1F) << 8) | (data[offset++] & 0xFF); // 6th
-                                _outputBuffer[_outputTail++] = (byte) ((i >> 6) & 0x7F);
-                                _outputBuffer[_outputTail++] = (byte) (i & 0x3F); // last 6 bits
-                            } else {
-                                _outputBuffer[_outputTail++] = (byte) (i & 0x1F); // last 5 bits                                
-                            }
-                        } else {
-                            _outputBuffer[_outputTail++] = (byte) (i & 0x0F); // last 4 bits
-                        }
-                    } else {
-                        _outputBuffer[_outputTail++] = (byte) (i & 0x07); // last 3 bits                        
-                    }
-                } else {
-                    _outputBuffer[_outputTail++] = (byte) (i & 0x03); // last 2 bits                    
-                }
-            } else {
-                _outputBuffer[_outputTail++] = (byte) (i & 0x01); // last bit
-            }
-        }
-    }
-
-    protected int _write7BitBinaryWithLength(InputStream in, int bytesLeft, byte[] buffer) 
-        throws IOException
-    {
-        _writePositiveVInt(bytesLeft);
-        int inputPtr = 0;
-        int inputEnd = 0;
-        int lastFullOffset = -7;
-
-        // first, let's handle full 7-byte chunks
-        while (bytesLeft >= 7) {
-            if (inputPtr > lastFullOffset) {
-                inputEnd = _readMore(in, buffer, inputPtr, inputEnd, bytesLeft);
-                inputPtr = 0;
-                if (inputEnd < 7) { // required to try to read to have at least 7 bytes
-                    bytesLeft -= inputEnd; // just to give accurate error messages wrt how much was gotten
-                    break;
-                }
-                lastFullOffset = inputEnd-7;
-            }
-            if ((_outputTail + 8) >= _outputEnd) {
-                _flushBuffer();
-            }
-            int i = buffer[inputPtr++]; // 1st byte
-            _outputBuffer[_outputTail++] = (byte) ((i >> 1) & 0x7F);
-            i = (i << 8) | (buffer[inputPtr++] & 0xFF); // 2nd
-            _outputBuffer[_outputTail++] = (byte) ((i >> 2) & 0x7F);
-            i = (i << 8) | (buffer[inputPtr++] & 0xFF); // 3rd
-            _outputBuffer[_outputTail++] = (byte) ((i >> 3) & 0x7F);
-            i = (i << 8) | (buffer[inputPtr++] & 0xFF); // 4th
-            _outputBuffer[_outputTail++] = (byte) ((i >> 4) & 0x7F);
-            i = (i << 8) | (buffer[inputPtr++] & 0xFF); // 5th
-            _outputBuffer[_outputTail++] = (byte) ((i >> 5) & 0x7F);
-            i = (i << 8) | (buffer[inputPtr++] & 0xFF); // 6th
-            _outputBuffer[_outputTail++] = (byte) ((i >> 6) & 0x7F);
-            i = (i << 8) | (buffer[inputPtr++] & 0xFF); // 7th
-            _outputBuffer[_outputTail++] = (byte) ((i >> 7) & 0x7F);
-            _outputBuffer[_outputTail++] = (byte) (i & 0x7F);
-            bytesLeft -= 7;
-        }
-
-        // and then partial piece, if any
-        if (bytesLeft > 0) {
-            // up to 6 bytes to output, resulting in at most 7 bytes (which can encode 49 bits)
-            if ((_outputTail + 7) >= _outputEnd) {
-                _flushBuffer();
-            }
-            inputEnd = _readMore(in, buffer, inputPtr, inputEnd, bytesLeft);
-            inputPtr = 0;
-            if (inputEnd > 0) { // yes, but do we have room for output?
-                bytesLeft -= inputEnd;
-                int i = buffer[inputPtr++];
-                _outputBuffer[_outputTail++] = (byte) ((i >> 1) & 0x7F);
-                if (inputEnd > 1) {
-                    i = ((i & 0x01) << 8) | (buffer[inputPtr++] & 0xFF); // 2nd
-                    _outputBuffer[_outputTail++] = (byte) ((i >> 2) & 0x7F);
-                    if (inputEnd > 2) {
-                        i = ((i & 0x03) << 8) | (buffer[inputPtr++] & 0xFF); // 3rd
-                        _outputBuffer[_outputTail++] = (byte) ((i >> 3) & 0x7F);
-                        if (inputEnd > 3) {
-                            i = ((i & 0x07) << 8) | (buffer[inputPtr++] & 0xFF); // 4th
-                            _outputBuffer[_outputTail++] = (byte) ((i >> 4) & 0x7F);
-                            if (inputEnd > 4) {
-                                i = ((i & 0x0F) << 8) | (buffer[inputPtr++] & 0xFF); // 5th
-                                _outputBuffer[_outputTail++] = (byte) ((i >> 5) & 0x7F);
-                                if (inputEnd > 5) {
-                                    i = ((i & 0x1F) << 8) | (buffer[inputPtr++] & 0xFF); // 6th
-                                    _outputBuffer[_outputTail++] = (byte) ((i >> 6) & 0x7F);
-                                    _outputBuffer[_outputTail++] = (byte) (i & 0x3F); // last 6 bits
-                                } else {
-                                    _outputBuffer[_outputTail++] = (byte) (i & 0x1F); // last 5 bits                                
-                                }
-                            } else {
-                                _outputBuffer[_outputTail++] = (byte) (i & 0x0F); // last 4 bits
-                            }
-                        } else {
-                            _outputBuffer[_outputTail++] = (byte) (i & 0x07); // last 3 bits                        
-                        }
-                    } else {
-                        _outputBuffer[_outputTail++] = (byte) (i & 0x03); // last 2 bits                    
-                    }
-                } else {
-                    _outputBuffer[_outputTail++] = (byte) (i & 0x01); // last bit
-                }
-            }
-        }
-        return bytesLeft;
-    }
-
-    private int _readMore(InputStream in,
-            byte[] readBuffer, int inputPtr, int inputEnd,
-            int maxRead) throws IOException
-    {
-        // anything to shift to front?
-        int i = 0;
-        while (inputPtr < inputEnd) {
-            readBuffer[i++]  = readBuffer[inputPtr++];
-        }
-        inputPtr = 0;
-        inputEnd = i;
-        
-        maxRead = Math.min(maxRead, readBuffer.length);
-        
-        do {
-            /* 26-Feb-2013, tatu: Similar to jackson-core issue #55, need to ensure
-             *   we have something to read.
-             */
-            int length = maxRead - inputEnd;
-            if (length == 0) {
-                break;
-            }
-            int count = in.read(readBuffer, inputEnd, length);            
-            if (count < 0) {
-                return inputEnd;
-            }
-            inputEnd += count;
-        } while (inputEnd < 7);
-        return inputEnd;
-    }
-    
     /*
     /**********************************************************
     /* Internal methods, buffer handling
@@ -2131,35 +1640,6 @@ public class CBORGenerator
             _charBuffer = null;
             _ioContext.releaseConcatBuffer(cbuf);
         }
-        /* Ok: since clearing up of larger arrays is much slower,
-         * let's only recycle default-sized buffers...
-         */
-        {
-            SharedStringNode[] nameBuf = _seenNames;
-            if (nameBuf != null && nameBuf.length == CBORBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH) {
-                _seenNames = null;
-                /* 28-Jun-2011, tatu: With 1.9, caller needs to clear the buffer; and note
-                 *   that since it's a hash area, must clear all
-                 */
-                if (_seenNameCount > 0) {
-                    Arrays.fill(nameBuf, null);
-                }
-                _smileBufferRecycler.releaseSeenNamesBuffer(nameBuf);
-            }
-        }
-        {
-            SharedStringNode[] valueBuf = _seenStringValues;
-            if (valueBuf != null && valueBuf.length == CBORBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH) {
-                _seenStringValues = null;
-                /* 28-Jun-2011, tatu: With 1.9, caller needs to clear the buffer; and note
-                 *   that since it's a hash area, must clear all
-                 */
-                if (_seenStringValueCount > 0) {
-                    Arrays.fill(valueBuf, null);
-                }
-                _smileBufferRecycler.releaseSeenStringValuesBuffer(valueBuf);
-            }
-        }
     }
 
     protected final void _flushBuffer() throws IOException
@@ -2171,124 +1651,6 @@ public class CBORGenerator
         }
     }
 
-    /*
-    /**********************************************************
-    /* Internal methods, handling shared string "maps"
-    /**********************************************************
-     */
-
-    private final int _findSeenName(String name)
-    {
-        int hash = name.hashCode();
-        SharedStringNode head = _seenNames[hash & (_seenNames.length-1)];
-        if (head == null) {
-            return -1;
-        }
-        SharedStringNode node = head;
-        // first, identity match; assuming most of the time we get intern()ed String
-        // And do unrolled initial check; 90+% likelihood head node has all info we need:
-        if (node.value == name) {
-            return node.index;
-        }
-        while ((node = node.next) != null) {
-            if (node.value == name) {
-                return node.index;
-            }
-        }
-        // If not, equality check; we already know head is not null
-        node = head;
-        do {
-            String value = node.value;
-            if (value.hashCode() == hash && value.equals(name)) {
-                return node.index;
-            }
-            node = node.next;
-        } while (node != null);
-        return -1;
-    }
-    
-    private final void _addSeenName(String name)
-    {
-        // first: do we need to expand?
-        if (_seenNameCount == _seenNames.length) {
-            if (_seenNameCount == MAX_SHARED_NAMES) { // we are too full, restart from empty
-                Arrays.fill(_seenNames, null);
-                _seenNameCount = 0;
-            } else { // we always start with modest default size (like 64), so expand to full
-                SharedStringNode[] old = _seenNames;
-                _seenNames = new SharedStringNode[MAX_SHARED_NAMES];
-                final int mask = MAX_SHARED_NAMES-1;
-                for (SharedStringNode node : old) {
-                    while (node != null) {
-                        int ix = node.value.hashCode() & mask;
-                        SharedStringNode next = node.next;
-                        node.next = _seenNames[ix];
-                        _seenNames[ix] = node;
-                        node = next;
-                    }
-                }
-            }
-        }
-        // other than that, just slap it there
-        int ix = name.hashCode() & (_seenNames.length-1);
-        _seenNames[ix] = new SharedStringNode(name, _seenNameCount, _seenNames[ix]);
-        ++_seenNameCount;
-    }
-
-    private final int _findSeenStringValue(String text)
-    {
-        int hash = text.hashCode();
-        SharedStringNode head = _seenStringValues[hash & (_seenStringValues.length-1)];
-        if (head != null) {
-            SharedStringNode node = head;
-            // first, identity match; assuming most of the time we get intern()ed String
-            do {
-                if (node.value == text) {
-                    return node.index;
-                }
-                node = node.next;
-            } while (node != null);
-            // and then comparison, if no match yet
-            node = head;
-            do {
-                String value = node.value;
-                if (value.hashCode() == hash && value.equals(text)) {
-                    return node.index;
-                }
-                node = node.next;
-            } while (node != null);
-        }
-        return -1;
-    }
-
-    private final void _addSeenStringValue(String text)
-    {
-        // first: do we need to expand?
-        if (_seenStringValueCount == _seenStringValues.length) {
-            if (_seenStringValueCount == MAX_SHARED_STRING_VALUES) { // we are too full, restart from empty
-                Arrays.fill(_seenStringValues, null);
-                _seenStringValueCount = 0;
-            } else { // we always start with modest default size (like 64), so expand to full
-                SharedStringNode[] old = _seenStringValues;
-                _seenStringValues = new SharedStringNode[MAX_SHARED_STRING_VALUES];
-                final int mask = MAX_SHARED_STRING_VALUES-1;
-                for (SharedStringNode node : old) {
-                    while (node != null) {
-                        int ix = node.value.hashCode() & mask;
-                        SharedStringNode next = node.next;
-                        node.next = _seenStringValues[ix];
-                        _seenStringValues[ix] = node;
-                        node = next;
-                    }
-                }
-            }
-        }
-        // other than that, just slap it there
-        int ix = text.hashCode() & (_seenStringValues.length-1);
-        _seenStringValues[ix] = new SharedStringNode(text, _seenStringValueCount, _seenStringValues[ix]);
-        ++_seenStringValueCount;
-    }
-    
     /*
     /**********************************************************
     /* Internal methods, error reporting

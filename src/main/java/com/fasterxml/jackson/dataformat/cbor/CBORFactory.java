@@ -25,6 +25,7 @@ import com.fasterxml.jackson.core.io.IOContext;
  */
 public class CBORFactory extends JsonFactory
 {
+    private static final long serialVersionUID = -4517030652345943412L;
 //    private static final long serialVersionUID = -1696783009312472365L;
 
     /*
@@ -32,7 +33,7 @@ public class CBORFactory extends JsonFactory
     /* Constants
     /**********************************************************
      */
-    
+
     /**
      * Name used to identify CBOR format.
      * (and returned by {@link #getFormatName()}
@@ -557,6 +558,8 @@ public class CBORFactory extends JsonFactory
          * For now, let's error out...
          */
         CBORGenerator gen = new CBORGenerator(ctxt, _generatorFeatures, feats, _objectCodec, out);
+
+        /*
         if ((feats & CBORGenerator.Feature.WRITE_HEADER.getMask()) != 0) {
             gen.writeHeader();
         } else {
@@ -571,6 +574,7 @@ public class CBORFactory extends JsonFactory
         			+" due to possible data loss (either enable WRITE_HEADER, or ENCODE_BINARY_AS_7BIT to resolve)");
             }
         }
+        */
         return gen;
     }
 }
