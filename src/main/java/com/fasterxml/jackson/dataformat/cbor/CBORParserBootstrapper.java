@@ -90,39 +90,26 @@ public class CBORParserBootstrapper
         throws IOException, JsonParseException
     {
         BytesToNameCanonicalizer can = rootByteSymbols.makeChild(true, internNames);
-    	// We just need a single byte, really, to know if it starts with header
-    	ensureLoaded(1);
+        // We just need a single byte, really, to know if it starts with header
+        ensureLoaded(1);
         CBORParser p = new CBORParser(_context, generalParserFeatures, smileFeatures,
                 codec, can, 
                 _in, _inputBuffer, _inputPtr, _inputEnd, _bufferRecyclable);
         boolean hadSig = false;
         if (_inputPtr < _inputEnd) { // only false for empty doc
+            /*
             if (_inputBuffer[_inputPtr] == CBORConstants.HEADER_BYTE_1) {
                 // need to ensure it gets properly handled so caller won't see the signature
                 hadSig = p.handleSignature(true, true);
             }
-    	} else {
+            */
+        } else {
     	    /* 11-Oct-2012, tatu: Actually, let's allow empty documents even if
     	     *   header signature would otherwise be needed. This is useful for
     	     *   JAX-RS provider, empty PUT/POST payloads.
     	     */
     	    return p;
-    	}
-    	if (!hadSig && (smileFeatures & CBORParser.Feature.REQUIRE_HEADER.getMask()) != 0) {
-    	    // Ok, first, let's see if it looks like plain JSON...
-    	    String msg;
-
-    	    byte firstByte = (_inputPtr < _inputEnd) ? _inputBuffer[_inputPtr] : 0;
-    	    if (firstByte == '{' || firstByte == '[') {
-                msg = "Input does not start with CBOR format header (first byte = 0x"
-                    +Integer.toHexString(firstByte & 0xFF)+") -- rather, it starts with '"+((char) firstByte)
-                    +"' (plain JSON input?) -- can not parse";
-    	    } else {
-                msg = "Input does not start with CBOR format header (first byte = 0x"
-                +Integer.toHexString(firstByte & 0xFF)+") and parser has REQUIRE_HEADER enabled: can not parse";
-    	    }
-    	    throw new JsonParseException(msg, JsonLocation.NA);
-    	}
+        }
         return p;
     }
 
@@ -146,6 +133,7 @@ public class CBORParserBootstrapper
         byte b2 = acc.nextByte();
         
         // First: do we see 3 "magic bytes"? If so, we are golden
+        /*
         if (b1 == CBORConstants.HEADER_BYTE_1) { // yeah, looks like marker
             if (b2 != CBORConstants.HEADER_BYTE_2) {
                 return MatchStrength.NO_MATCH;
@@ -156,6 +144,7 @@ public class CBORParserBootstrapper
             return (acc.nextByte() == CBORConstants.HEADER_BYTE_3) ?
                     MatchStrength.FULL_MATCH : MatchStrength.NO_MATCH;
         }
+        */
         // Otherwise: ideally either Object or Array:
         if (b1 == CBORConstants.TOKEN_LITERAL_START_OBJECT) {
             /* Object is bit easier, because now we need to get new name; i.e. can

@@ -258,12 +258,8 @@ public final class CBORConstants
      * Let's use same code for empty key as for empty String value
      */
     public final static byte TOKEN_KEY_EMPTY_STRING = 0x20;
-
-    public final static int TOKEN_PREFIX_KEY_SHARED_LONG = 0x30;
     
     public final static byte TOKEN_KEY_LONG_STRING = 0x34;
-
-    public final static int TOKEN_PREFIX_KEY_SHARED_SHORT = 0x40;
     
     public final static int TOKEN_PREFIX_KEY_ASCII = 0x80;
 
@@ -305,4 +301,3 @@ public final class CBORConstants
         sUtf8UnitLengths = table;
     }
 }
-
