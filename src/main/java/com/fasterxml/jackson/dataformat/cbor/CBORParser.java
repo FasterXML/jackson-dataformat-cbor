@@ -1247,6 +1247,7 @@ public class CBORParser
 
         // otherwise, handle, mark as complete
         // first, raw inlined binary data (simple)
+        /*
         if (_typeByte == CBORConstants.TOKEN_MISC_BINARY_RAW) {
             final int totalCount = _readUnsignedVInt();
             int left = totalCount;
@@ -1264,6 +1265,7 @@ public class CBORParser
             _tokenIncomplete = false;
             return totalCount;
         }
+        */
         if (_typeByte != CBORConstants.TOKEN_MISC_BINARY_7BIT) {
             _throwInternal();
         }

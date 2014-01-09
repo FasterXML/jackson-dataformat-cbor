@@ -202,19 +202,6 @@ public final class CBORConstants
      */
     public final static byte TOKEN_MISC_BINARY_7BIT = (byte) 0xE8;
 
-    /**
-     * @deprecated (since 2.1) Use {@link #TOKEN_PREFIX_SHARED_STRING_LONG} instead
-     */
-    @Deprecated
-    public final static byte A_TOKEN_MISC_SHARED_STRING_LONG = (byte) 0xEC;
-    
-    /**
-     * Raw binary data marker is specifically chosen as separate from
-     * other types, since it can have significant impact on framing
-     * (or rather fast scanning based on structure and framing markers).
-     */
-    public final static byte TOKEN_MISC_BINARY_RAW = (byte) 0xFD;
-
     /*
     /**********************************************************
     /* Modifiers for numeric entries

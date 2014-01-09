@@ -855,9 +855,7 @@ public class CBORGenerator
             return;
         }
         _verifyValueWrite("write Binary value");
-        _writeByte(TOKEN_MISC_BINARY_RAW);
-        _writePositiveVInt(len);
-        // raw is dead simple of course:
+        _writeInt32(PREFIX_TYPE_BYTES, len);
         _writeBytes(data, offset, len);
     }
 
@@ -871,9 +869,8 @@ public class CBORGenerator
         }
         _verifyValueWrite("write Binary value");
         int missing;
-        _writeByte(TOKEN_MISC_BINARY_RAW );
-        _writePositiveVInt(dataLength);
-        // raw is dead simple of course:
+
+        _writeInt32(PREFIX_TYPE_BYTES, dataLength);
         missing = _writeBytes(data, dataLength);
         if (missing > 0) {
             _reportError("Too few bytes available: missing "+missing+" bytes (out of "+dataLength+")");
@@ -913,41 +910,18 @@ public class CBORGenerator
     }
 
     @Override
-    public void writeNumber(int i) throws IOException, JsonGenerationException
+    public void writeNumber(int i) throws IOException
     {
         _verifyValueWrite("write number");
-        _ensureRoomForOutput(5);
         int marker;
         if (i < 0) {
             i += 1;
             i = -1;
-            marker = MAJOR_TYPE_INT_NEG;
+            marker = PREFIX_TYPE_INT_NEG;
         } else {
-            marker = MAJOR_TYPE_INT_POS;
+            marker = PREFIX_TYPE_INT_POS;
         }
-
-        if (i < 24) {
-            _outputBuffer[_outputTail++] = (byte) (marker + i);
-            return;
-        }
-        if (i <= 0xFF) {
-            _outputBuffer[_outputTail++] = (byte) (marker + 24);
-            _outputBuffer[_outputTail++] = (byte) i;
-            return;
-        }
-        final byte b0 = (byte) i;
-        i >>= 8;
-        if (i <= 0xFF) {
-            _outputBuffer[_outputTail++] = (byte) (marker + 25);
-            _outputBuffer[_outputTail++] = (byte) i;
-            _outputBuffer[_outputTail++] = b0;
-            return;
-        }
-        _outputBuffer[_outputTail++] = (byte) (marker + 26);
-        _outputBuffer[_outputTail++] = (byte) (i >> 16);
-        _outputBuffer[_outputTail++] = (byte) (i >> 8);
-        _outputBuffer[_outputTail++] = (byte) i;
-        _outputBuffer[_outputTail++] = b0;
+        _writeInt32(marker, i);
     }
 
     @Override
@@ -963,9 +937,9 @@ public class CBORGenerator
         if (l < 0) {
             l += 1;
             l = -1;
-            _outputBuffer[_outputTail++] = (MAJOR_TYPE_INT_NEG + 27);
+            _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_NEG + 27);
         } else {
-            _outputBuffer[_outputTail++] = (MAJOR_TYPE_INT_POS + 27);
+            _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_POS + 27);
         }
         int i = (int) (l >> 32);
         _outputBuffer[_outputTail++] = (byte) (i >> 24);
@@ -1142,6 +1116,7 @@ public class CBORGenerator
         _releaseBuffers();
     }
     
+
     /*
     /**********************************************************
     /* Internal methods, UTF-8 encoding
@@ -1397,6 +1372,33 @@ public class CBORGenerator
         if ((_outputTail + needed) >= _outputEnd) {
             _flushBuffer();
         }        
+    }
+
+    private final void _writeInt32(int majorType, int i) throws IOException
+    {
+        _ensureRoomForOutput(5);
+        if (i < 24) {
+            _outputBuffer[_outputTail++] = (byte) (majorType + i);
+            return;
+        }
+        if (i <= 0xFF) {
+            _outputBuffer[_outputTail++] = (byte) (majorType + 24);
+            _outputBuffer[_outputTail++] = (byte) i;
+            return;
+        }
+        final byte b0 = (byte) i;
+        i >>= 8;
+        if (i <= 0xFF) {
+            _outputBuffer[_outputTail++] = (byte) (majorType + 25);
+            _outputBuffer[_outputTail++] = (byte) i;
+            _outputBuffer[_outputTail++] = b0;
+            return;
+        }
+        _outputBuffer[_outputTail++] = (byte) (majorType + 26);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+        _outputBuffer[_outputTail++] = b0;
     }
     
     private final void _writeByte(byte b) throws IOException
