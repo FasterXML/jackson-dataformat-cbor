@@ -12,7 +12,7 @@ import com.fasterxml.jackson.core.base.GeneratorBase;
 import static com.fasterxml.jackson.dataformat.cbor.CBORConstants.*;
 
 /**
- * {@link JsonGenerator} implementation for the experimental "Binary JSON Infoset".
+ * {@link JsonGenerator} implementation that writes CBOR encoded content.
  * 
  * @author Tatu Saloranta
  */
@@ -26,7 +26,7 @@ public class CBORGenerator
         /**
          * Placeholder before any format-specific features are added.
          */
-        BOGUS(true),
+        BOGUS(false),
         ;
 
         protected final boolean _defaultState;
@@ -68,23 +68,15 @@ public class CBORGenerator
      */
     private final static int MIN_BUFFER_LENGTH = (3 * 256) + 2;
 
-    protected final static byte TOKEN_BYTE_LONG_STRING_ASCII = TOKEN_MISC_LONG_TEXT_ASCII;
-
-    protected final static byte TOKEN_BYTE_INT_32 =  (byte) (CBORConstants.TOKEN_PREFIX_INTEGER + TOKEN_MISC_INTEGER_32);
-    protected final static byte TOKEN_BYTE_INT_64 =  (byte) (CBORConstants.TOKEN_PREFIX_INTEGER + TOKEN_MISC_INTEGER_64);
-    protected final static byte TOKEN_BYTE_BIG_INTEGER =  (byte) (CBORConstants.TOKEN_PREFIX_INTEGER + TOKEN_MISC_INTEGER_BIG);
-
-    protected final static byte TOKEN_BYTE_FLOAT_32 =  (byte) (CBORConstants.TOKEN_PREFIX_FP | TOKEN_MISC_FLOAT_32);
-    protected final static byte TOKEN_BYTE_FLOAT_64 =  (byte) (CBORConstants.TOKEN_PREFIX_FP | TOKEN_MISC_FLOAT_64);
-    protected final static byte TOKEN_BYTE_BIG_DECIMAL =  (byte) (CBORConstants.TOKEN_PREFIX_FP | TOKEN_MISC_FLOAT_BIG);
+    private final static byte TOKEN_BYTE_LONG_STRING_ASCII = TOKEN_MISC_LONG_TEXT_ASCII;
     
-    protected final static int SURR1_FIRST = 0xD800;
-    protected final static int SURR1_LAST = 0xDBFF;
-    protected final static int SURR2_FIRST = 0xDC00;
-    protected final static int SURR2_LAST = 0xDFFF;
+    private final static int SURR1_FIRST = 0xD800;
+    private final static int SURR1_LAST = 0xDBFF;
+    private final static int SURR2_FIRST = 0xDC00;
+    private final static int SURR2_LAST = 0xDFFF;
 
-    protected final static long MIN_INT_AS_LONG = (long) Integer.MIN_VALUE;
-    protected final static long MAX_INT_AS_LONG = (long) Integer.MAX_VALUE;
+    private final static long MIN_INT_AS_LONG = (long) Integer.MIN_VALUE;
+    private final static long MAX_INT_AS_LONG = (long) Integer.MAX_VALUE;
     
     /*
     /**********************************************************
@@ -232,8 +224,7 @@ public class CBORGenerator
      * (should we throw an exception instead?)
      */
     @Override
-    public JsonGenerator useDefaultPrettyPrinter()
-    {
+    public JsonGenerator useDefaultPrettyPrinter() {
         return this;
     }
 
@@ -1505,14 +1496,6 @@ public class CBORGenerator
     /**********************************************************
      */
 
-    /**
-     * Method for accessing offset of the next byte within the whole output
-     * stream that this generator has produced.
-     */
-    protected long outputOffset() {
-        return _bytesWritten + _outputTail;
-    }
-    
     protected UnsupportedOperationException _notSupported() {
         return new UnsupportedOperationException();
     }    

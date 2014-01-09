@@ -18,16 +18,13 @@ public class CBORParser
     extends ParserBase
 {
     /**
-     * Enumeration that defines all togglable features for Smile generators.
+     * Enumeration that defines all togglable features for CBOR generators.
      */
     public enum Feature {
         /**
-         * Feature that determines whether 4-byte Smile header is mandatory in input,
-         * or optional. If enabled, it means that only input that starts with the header
-         * is accepted as valid; if disabled, header is optional. In latter case,r 
-         * settings for content are assumed to be defaults.
+         * Placeholder before any format-specific features are added.
          */
-        REQUIRE_HEADER(true)
+        BOGUS(false)
         ;
 
         final boolean _defaultState;
