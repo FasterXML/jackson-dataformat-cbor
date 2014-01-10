@@ -13,6 +13,11 @@ import com.fasterxml.jackson.core.sym.BytesToNameCanonicalizer;
  */
 public class CBORParserBootstrapper
 {
+    private final static byte TOKEN_KEY_LONG_STRING = 0x34;
+
+    private final static byte TOKEN_LITERAL_START_ARRAY = (byte) 0xF8;
+    private final static byte TOKEN_LITERAL_START_OBJECT = (byte) 0xFA;
+
     /*
     /**********************************************************
     /* Configuration
@@ -146,11 +151,11 @@ public class CBORParserBootstrapper
         }
         */
         // Otherwise: ideally either Object or Array:
-        if (b1 == CBORConstants.TOKEN_LITERAL_START_OBJECT) {
+        if (b1 == TOKEN_LITERAL_START_OBJECT) {
             /* Object is bit easier, because now we need to get new name; i.e. can
              * rule out name back-refs
              */
-            if (b2 == CBORConstants.TOKEN_KEY_LONG_STRING) {
+            if (b2 == TOKEN_KEY_LONG_STRING) {
                 return MatchStrength.SOLID_MATCH;
             }
             int ch = (int) b2 & 0xFF;
@@ -160,7 +165,7 @@ public class CBORParserBootstrapper
             return MatchStrength.NO_MATCH;
         }
         // Array bit trickier
-        if (b1 == CBORConstants.TOKEN_LITERAL_START_ARRAY) {
+        if (b1 == TOKEN_LITERAL_START_ARRAY) {
             if (!acc.hasMoreBytes()) {
                 return MatchStrength.INCONCLUSIVE;
             }

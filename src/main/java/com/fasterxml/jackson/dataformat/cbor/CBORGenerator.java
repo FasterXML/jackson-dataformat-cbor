@@ -19,6 +19,28 @@ import static com.fasterxml.jackson.dataformat.cbor.CBORConstants.*;
 public class CBORGenerator
     extends GeneratorBase
 {
+    private final static int MAX_SHORT_VALUE_STRING_BYTES = 64;
+    private final static int MAX_SHORT_NAME_ASCII_BYTES = 64;
+    private final static int MAX_SHORT_NAME_UNICODE_BYTES = 56;
+    private final static int MAX_SHARED_STRING_LENGTH_BYTES = 65;
+    private final static int MIN_BUFFER_FOR_POSSIBLE_SHORT_STRING = 1 + (3 * 65);
+
+    private final static int INT_MARKER_END_OF_STRING = 0xFC;
+    private final static byte BYTE_MARKER_END_OF_STRING = (byte) INT_MARKER_END_OF_STRING;
+
+    private final static byte TOKEN_LITERAL_EMPTY_STRING = 0x20;
+    
+    private final static byte TOKEN_KEY_EMPTY_STRING = 0x20;
+    private final static byte TOKEN_KEY_LONG_STRING = 0x34;
+    private final static int TOKEN_PREFIX_KEY_ASCII = 0x80;
+    private final static int TOKEN_PREFIX_KEY_UNICODE = 0xC0;
+    
+    private final static byte TOKEN_MISC_LONG_TEXT_ASCII = (byte) 0xE0;
+    private final static byte TOKEN_MISC_LONG_TEXT_UNICODE = (byte) 0xE4;
+
+    private final static int TOKEN_PREFIX_TINY_ASCII = 0x40;
+    private final static int TOKEN_PREFIX_TINY_UNICODE = 0x80;
+    
     /**
      * Enumeration that defines all togglable features for Smile generators.
      */
@@ -599,7 +621,7 @@ public class CBORGenerator
             }
         } else { // nope, longer String 
             _outputBuffer[origOffset] = (byteLen == len) ? TOKEN_BYTE_LONG_STRING_ASCII
-                    : CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
+                    : TOKEN_MISC_LONG_TEXT_UNICODE;
             // and we will need String end marker byte
             _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
         }
@@ -614,7 +636,7 @@ public class CBORGenerator
     {
         // First: can we at least make a copy to char[]?
         if (len > _charBufferLength) { // nope; need to skip copy step (alas; this is slower)
-            _writeByte(CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
+            _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
             _slowUTF8Encode(text);
             _writeByte(BYTE_MARKER_END_OF_STRING);
             return;
@@ -625,7 +647,7 @@ public class CBORGenerator
         // Next: does it always fit within output buffer?
         if (maxLen > _outputBuffer.length) { // nope
             // can't rewrite type buffer, so can't speculate it might be all-ASCII
-            _writeByte(CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
+            _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
             _mediumUTF8Encode(_charBuffer, 0, len);
             _writeByte(BYTE_MARKER_END_OF_STRING);
             return;
@@ -640,7 +662,7 @@ public class CBORGenerator
         int byteLen = _shortUTF8Encode(_charBuffer, 0, len);
         // If not ASCII, fix type:
         if (byteLen > len) {
-            _outputBuffer[origOffset] = CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
+            _outputBuffer[origOffset] = TOKEN_MISC_LONG_TEXT_UNICODE;
         }
         _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;                
     }
@@ -669,7 +691,7 @@ public class CBORGenerator
                     typeToken = (byte) ((TOKEN_PREFIX_TINY_UNICODE - 2) + byteLen);
                 }
             } else { // nope, longer non-ASCII Strings
-                typeToken = CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
+                typeToken = TOKEN_MISC_LONG_TEXT_UNICODE;
                 // and we will need String end marker byte
                 _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
             }
@@ -683,7 +705,7 @@ public class CBORGenerator
                     _flushBuffer();
                 }
                 int origOffset = _outputTail;
-                _writeByte(CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
+                _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
                 int byteLen = _shortUTF8Encode(text, offset, offset+len);
                 // if it's ASCII, let's revise our type determination (to help decoder optimize)
                 if (byteLen == len) {
@@ -691,7 +713,7 @@ public class CBORGenerator
                 }
                 _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
             } else {
-                _writeByte(CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
+                _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
                 _mediumUTF8Encode(text, offset, offset+len);
                 _writeByte(BYTE_MARKER_END_OF_STRING);
             }
@@ -730,7 +752,7 @@ public class CBORGenerator
         } else { // "long" String, never shared
             // but might still fit within buffer?
             byte typeToken = (byteLen == len) ? TOKEN_BYTE_LONG_STRING_ASCII
-                    : CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
+                    : TOKEN_MISC_LONG_TEXT_UNICODE;
             _writeByte(typeToken);
             _writeBytes(raw, 0, raw.length);
             _writeByte(BYTE_MARKER_END_OF_STRING);
@@ -771,12 +793,12 @@ public class CBORGenerator
                 if ((_outputTail + maxLen) >= _outputEnd) {
                     _flushBuffer();
                 }
-                _outputBuffer[_outputTail++] = CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE;
+                _outputBuffer[_outputTail++] = TOKEN_MISC_LONG_TEXT_UNICODE;
                 System.arraycopy(text, offset, _outputBuffer, _outputTail, len);
                 _outputTail += len;
                 _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
             } else {
-                _writeByte(CBORConstants.TOKEN_MISC_LONG_TEXT_UNICODE);
+                _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
                 _writeBytes(text, offset, len);
                 _writeByte(BYTE_MARKER_END_OF_STRING);
             }
@@ -952,16 +974,21 @@ public class CBORGenerator
             return;
         }
         _verifyValueWrite("write number");
-
-        /*
-        // quite simple: type, and then VInt-len prefixed 7-bit encoded binary data:
-        _writeByte(TOKEN_BYTE_BIG_INTEGER);
-
-//        _write7BitBinaryWithLength(data, 0, data.length);
-//        byte[] data = v.toByteArray();
- */
-
-        // !!! TODO
+        
+        /* Supported by using type tags, as per spec: major type for tag '6';
+         * 5 LSB either 2 for positive bignum or 3 for negative bignum.
+         * And then byte sequence that encode variable length integer.
+         */
+        if (v.signum() < 0) {
+            _writeByte(BYTE_TAG_BIGNUM_NEG);
+            v = v.negate();
+        } else {
+            _writeByte(BYTE_TAG_BIGNUM_POS);
+        }
+        byte[] data = v.toByteArray();
+        final int len = data.length;
+        _writeInt32(PREFIX_TYPE_BYTES, len);
+        _writeBytes(data, 0, len);
     }
     
     @Override
@@ -1017,19 +1044,44 @@ public class CBORGenerator
             return;
         }
         _verifyValueWrite("write number");
+        /* Supported by using type tags, as per spec: major type for tag '6';
+         * 5 LSB 4.
+         * And then a two-int array, with mantissa and exponent
+         */
+        _writeByte(BYTE_TAG_BIGFLOAT);
+        _writeByte(BYTE_ARRAY_2_ELEMENTS);
+                
 
         /*
-        _writeByte(TOKEN_BYTE_BIG_DECIMAL);
+        _writeInt32(PREFIX_TYPE_BYTES, len);
+        _writeBytes(data, 0, len);
         */
         int scale = dec.scale();
-        // Ok, first output scale as VInt
-//        _writeSignedVInt(scale);
-        BigInteger unscaled = dec.unscaledValue();
-        // And then binary data in "safe" mode (7-bit values)
-//        _write7BitBinaryWithLength(data, 0, data.length);
+        _writeIntValue(scale);
 
-        // !!! TODO
-//        byte[] data = unscaled.toByteArray();
+        /* Hmmmh. Specification suggest use of regular integer for mantissa.
+         * But... it may or may not fit. Let's try to do that, if it works;
+         * if not, use byte array.
+         */
+        BigInteger unscaled = dec.unscaledValue();
+        byte[] data = unscaled.toByteArray();
+        if (data.length <= 4) {
+            int v = data[0]; // let it be sign extended on purpose
+            for (int i = 1; i < data.length; ++i) {
+                v = (v << 8) + (data[i] & 0xFF);
+            }
+            _writeIntValue(v);
+        } else if (data.length <= 8) {
+            long v = data[0]; // let it be sign extended on purpose
+            for (int i = 1; i < data.length; ++i) {
+                v = (v << 8) + (data[i] & 0xFF);
+            }
+            _writeLongValue(v);
+        } else {
+            final int len = data.length;
+            _writeInt32(PREFIX_TYPE_BYTES, len);
+            _writeBytes(data, 0, len);
+        }
     }
 
     @Override
@@ -1365,6 +1417,41 @@ public class CBORGenerator
         }        
     }
 
+    private final void _writeIntValue(int i) throws IOException
+    {
+        int marker;
+        if (i < 0) {
+            i += 1;
+            i = -1;
+            marker = PREFIX_TYPE_INT_NEG;
+        } else {
+            marker = PREFIX_TYPE_INT_POS;
+        }
+        _writeInt32(marker, i);
+    }
+
+    private final void _writeLongValue(long l) throws IOException
+    {
+        _ensureRoomForOutput(9);
+        if (l < 0) {
+            l += 1;
+            l = -1;
+            _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_NEG + 27);
+        } else {
+            _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_POS + 27);
+        }
+        int i = (int) (l >> 32);
+        _outputBuffer[_outputTail++] = (byte) (i >> 24);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+        i = (int) l;
+        _outputBuffer[_outputTail++] = (byte) (i >> 24);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+    }
+    
     private final void _writeInt32(int majorType, int i) throws IOException
     {
         _ensureRoomForOutput(5);

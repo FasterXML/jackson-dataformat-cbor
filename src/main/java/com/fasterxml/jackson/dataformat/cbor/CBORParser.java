@@ -12,11 +12,17 @@ import com.fasterxml.jackson.core.io.IOContext;
 import com.fasterxml.jackson.core.sym.BytesToNameCanonicalizer;
 import com.fasterxml.jackson.core.sym.Name;
 
-import static com.fasterxml.jackson.dataformat.cbor.CBORConstants.BYTE_MARKER_END_OF_STRING;
-
 public class CBORParser
     extends ParserBase
 {
+    private final static int MAX_SHARED_NAMES = 1024;
+    private final static int MAX_SHARED_STRING_VALUES = 1024;
+
+    private final static int INT_MARKER_END_OF_STRING = 0xFC;
+    private final static byte BYTE_MARKER_END_OF_STRING = (byte) INT_MARKER_END_OF_STRING;
+
+    private final static byte TOKEN_MISC_BINARY_7BIT = (byte) 0xE8;
+    
     /**
      * Enumeration that defines all togglable features for CBOR generators.
      */
@@ -726,11 +732,11 @@ public class CBORParser
             if (newShared == null) {
                 newShared = new String[CBORBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH];
             }
-        } else if (len == CBORConstants.MAX_SHARED_STRING_VALUES) { // too many? Just flush...
+        } else if (len == MAX_SHARED_STRING_VALUES) { // too many? Just flush...
            newShared = oldShared;
            _seenStringValueCount = 0; // could also clear, but let's not yet bother
         } else {
-            int newSize = (len == CBORBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH) ? 256 : CBORConstants.MAX_SHARED_STRING_VALUES;
+            int newSize = (len == CBORBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH) ? 256 : MAX_SHARED_STRING_VALUES;
             newShared = new String[newSize];
             System.arraycopy(oldShared, 0, newShared, 0, oldShared.length);
         }
@@ -1263,7 +1269,7 @@ public class CBORParser
             return totalCount;
         }
         */
-        if (_typeByte != CBORConstants.TOKEN_MISC_BINARY_7BIT) {
+        if (_typeByte != TOKEN_MISC_BINARY_7BIT) {
             _throwInternal();
         }
         // or, alternative, 7-bit encoded stuff:
@@ -1460,11 +1466,11 @@ public class CBORParser
             if (newShared == null) {
                 newShared = new String[CBORBufferRecycler.DEFAULT_NAME_BUFFER_LENGTH];                
             }
-        } else if (len == CBORConstants.MAX_SHARED_NAMES) { // too many? Just flush...
+        } else if (len == MAX_SHARED_NAMES) { // too many? Just flush...
       	   newShared = oldShared;
       	   _seenNameCount = 0; // could also clear, but let's not yet bother
         } else {
-            int newSize = (len == CBORBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH) ? 256 : CBORConstants.MAX_SHARED_NAMES;
+            int newSize = (len == CBORBufferRecycler.DEFAULT_STRING_VALUE_BUFFER_LENGTH) ? 256 : MAX_SHARED_NAMES;
             newShared = new String[newSize];
             System.arraycopy(oldShared, 0, newShared, 0, oldShared.length);
         }
@@ -2273,7 +2279,7 @@ public class CBORParser
             left = Math.min(left, outBuf.length - outPtr);
             do {
                 byte b = _inputBuffer[inPtr++];
-                if (b == CBORConstants.BYTE_MARKER_END_OF_STRING) {
+                if (b == BYTE_MARKER_END_OF_STRING) {
                     _inputPtr = inPtr;
                     break main_loop;
                 }
@@ -2325,7 +2331,7 @@ public class CBORParser
                 _inputPtr = ptr;
             }
             // Ok: end marker, escape or multi-byte?
-            if (c == CBORConstants.INT_MARKER_END_OF_STRING) {
+            if (c == INT_MARKER_END_OF_STRING) {
                 break main_loop;
             }
 
