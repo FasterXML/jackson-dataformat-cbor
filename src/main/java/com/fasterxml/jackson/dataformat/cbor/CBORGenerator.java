@@ -20,20 +20,12 @@ public class CBORGenerator
     extends GeneratorBase
 {
     private final static int MAX_SHORT_VALUE_STRING_BYTES = 64;
-    private final static int MAX_SHORT_NAME_ASCII_BYTES = 64;
-    private final static int MAX_SHORT_NAME_UNICODE_BYTES = 56;
-    private final static int MAX_SHARED_STRING_LENGTH_BYTES = 65;
     private final static int MIN_BUFFER_FOR_POSSIBLE_SHORT_STRING = 1 + (3 * 65);
 
     private final static int INT_MARKER_END_OF_STRING = 0xFC;
     private final static byte BYTE_MARKER_END_OF_STRING = (byte) INT_MARKER_END_OF_STRING;
 
     private final static byte TOKEN_LITERAL_EMPTY_STRING = 0x20;
-    
-    private final static byte TOKEN_KEY_EMPTY_STRING = 0x20;
-    private final static byte TOKEN_KEY_LONG_STRING = 0x34;
-    private final static int TOKEN_PREFIX_KEY_ASCII = 0x80;
-    private final static int TOKEN_PREFIX_KEY_UNICODE = 0xC0;
     
     private final static byte TOKEN_MISC_LONG_TEXT_ASCII = (byte) 0xE0;
     private final static byte TOKEN_MISC_LONG_TEXT_UNICODE = (byte) 0xE4;
@@ -275,33 +267,33 @@ public class CBORGenerator
      */
 
     @Override
-    public final void writeFieldName(String name)  throws IOException, JsonGenerationException
+    public final void writeFieldName(String name)  throws IOException
     {
         if (_writeContext.writeFieldName(name) == JsonWriteContext.STATUS_EXPECT_VALUE) {
             _reportError("Can not write a field name, expecting a value");
         }
-        _writeFieldName(name);
+        _writeString(name);
     }
 
     @Override
     public final void writeFieldName(SerializableString name)
-        throws IOException, JsonGenerationException
+        throws IOException
     {
         // Object is a value, need to verify it's allowed
         if (_writeContext.writeFieldName(name.getValue()) == JsonWriteContext.STATUS_EXPECT_VALUE) {
             _reportError("Can not write a field name, expecting a value");
         }
-        _writeFieldName(name);
+        _writeString(name.getValue());
     }
 
     @Override
     public final void writeStringField(String fieldName, String value)
-        throws IOException, JsonGenerationException
+        throws IOException
     {
         if (_writeContext.writeFieldName(fieldName) == JsonWriteContext.STATUS_EXPECT_VALUE) {
             _reportError("Can not write a field name, expecting a value");
         }
-        _writeFieldName(fieldName);
+        _writeString(fieldName);
         writeString(value);
     }
     
@@ -346,8 +338,7 @@ public class CBORGenerator
      *<p>
      * NOTE: only use this method if you really know what you are doing.
      */
-    public void writeRaw(byte b) throws IOException, JsonGenerationException
-    {
+    public void writeRaw(byte b) throws IOException {
         _writeByte(b);
     }
 
@@ -357,8 +348,7 @@ public class CBORGenerator
      *<p>
      * NOTE: only use this method if you really know what you are doing.
      */
-    public void writeBytes(byte[] data, int offset, int len) throws IOException
-    {
+    public void writeBytes(byte[] data, int offset, int len) throws IOException {
         _writeBytes(data, offset, len);
     }
     
@@ -369,7 +359,7 @@ public class CBORGenerator
      */
 
     @Override
-    public final void writeStartArray() throws IOException, JsonGenerationException
+    public final void writeStartArray() throws IOException
     {
         _verifyValueWrite("start an array");
         _writeContext = _writeContext.createChildArrayContext();
@@ -377,7 +367,7 @@ public class CBORGenerator
     }
 
     @Override
-    public final void writeEndArray() throws IOException, JsonGenerationException
+    public final void writeEndArray() throws IOException
     {
         if (!_writeContext.inArray()) {
             _reportError("Current context not an ARRAY but "+_writeContext.getTypeDesc());
@@ -387,7 +377,7 @@ public class CBORGenerator
     }
 
     @Override
-    public final void writeStartObject() throws IOException, JsonGenerationException
+    public final void writeStartObject() throws IOException
     {
         _verifyValueWrite("start an object");
         _writeContext = _writeContext.createChildObjectContext();
@@ -395,187 +385,13 @@ public class CBORGenerator
     }
 
     @Override
-    public final void writeEndObject() throws IOException, JsonGenerationException
+    public final void writeEndObject() throws IOException
     {
         if (!_writeContext.inObject()) {
             _reportError("Current context not an object but "+_writeContext.getTypeDesc());
         }
         _writeContext = _writeContext.getParent();
         _writeByte(BYTE_BREAK);
-    }
-
-    private final void _writeFieldName(String name)
-        throws IOException, JsonGenerationException
-    {
-        int len = name.length();
-        if (len == 0) {
-            _writeByte(TOKEN_KEY_EMPTY_STRING);
-            return;
-        }
-        if (len > MAX_SHORT_NAME_UNICODE_BYTES) { // can not be a 'short' String; off-line (rare case)
-            _writeNonShortFieldName(name, len);
-            return;
-        }
-
-        // first: ensure we have enough space
-        if ((_outputTail + MIN_BUFFER_FOR_POSSIBLE_SHORT_STRING) >= _outputEnd) {
-            _flushBuffer();
-        }
-        // then let's copy String chars to char buffer, faster than using getChar (measured, profiled)
-        name.getChars(0, len, _charBuffer, 0);
-        int origOffset = _outputTail;
-        ++_outputTail; // to reserve space for type token
-        int byteLen = _shortUTF8Encode(_charBuffer, 0, len);
-        byte typeToken;
-        
-        // ASCII?
-        if (byteLen == len) {
-            if (byteLen <= MAX_SHORT_NAME_ASCII_BYTES) { // yes, is short indeed
-                typeToken = (byte) ((TOKEN_PREFIX_KEY_ASCII - 1) + byteLen);
-            } else { // longer albeit ASCII
-                typeToken = TOKEN_KEY_LONG_STRING;
-                // and we will need String end marker byte
-                _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
-            }
-        } else { // not all ASCII
-            if (byteLen <= MAX_SHORT_NAME_UNICODE_BYTES) { // yes, is short indeed
-                // note: since 2 is smaller allowed length, offset differs from one used for
-                typeToken = (byte) ((TOKEN_PREFIX_KEY_UNICODE - 2) + byteLen);
-            } else { // nope, longer non-ASCII Strings
-                typeToken = TOKEN_KEY_LONG_STRING;
-                // and we will need String end marker byte
-                _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
-            }
-        }
-        // and then sneak in type token now that know the details
-        _outputBuffer[origOffset] = typeToken;
-    }
-
-    private final void _writeNonShortFieldName(final String name, final int len)
-        throws IOException, JsonGenerationException
-    {
-        _writeByte(TOKEN_KEY_LONG_STRING);
-        // can we still make a temp copy?
-        if (len > _charBufferLength) { // nah, not even that
-            _slowUTF8Encode(name);
-        } else { // yep.
-            name.getChars(0, len, _charBuffer, 0);
-            // but will encoded version fit in buffer?
-            int maxLen = len + len + len;
-            if (maxLen <= _outputBuffer.length) { // yes indeed
-                if ((_outputTail + maxLen) >= _outputEnd) {
-                    _flushBuffer();
-                }
-                 _shortUTF8Encode(_charBuffer, 0, len);
-            } else { // nope, need bit slower variant
-                _mediumUTF8Encode(_charBuffer, 0, len);
-            }
-        }
-        if (_outputTail >= _outputEnd) {
-            _flushBuffer();
-        }
-        _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;                
-    }
-    
-    protected final void _writeFieldName(SerializableString name)
-        throws IOException, JsonGenerationException
-    {
-        final int charLen = name.charLength();
-        if (charLen == 0) {
-            _writeByte(TOKEN_KEY_EMPTY_STRING);
-            return;
-        }
-        final byte[] bytes = name.asUnquotedUTF8();
-        final int byteLen = bytes.length;
-        if (byteLen != charLen) {
-            _writeFieldNameUnicode(name, bytes);
-            return;
-        }
-        // Common case: short ASCII name that fits in buffer as is
-        if (byteLen <= MAX_SHORT_NAME_ASCII_BYTES) {
-            // output buffer is bigger than what we need, always, so
-            if ((_outputTail + byteLen) >= _outputEnd) { // need marker byte and actual bytes
-                _flushBuffer();
-            }
-            _outputBuffer[_outputTail++] = (byte) ((TOKEN_PREFIX_KEY_ASCII - 1) + byteLen);
-            System.arraycopy(bytes, 0, _outputBuffer, _outputTail, byteLen);
-            _outputTail += byteLen;
-        } else {
-            _writeLongAsciiFieldName(bytes);
-        }
-    }
-
-    private final void _writeLongAsciiFieldName(byte[] bytes)
-        throws IOException, JsonGenerationException
-    {
-        final int byteLen = bytes.length;
-        if (_outputTail >= _outputEnd) {
-            _flushBuffer();
-        }
-        _outputBuffer[_outputTail++] = TOKEN_KEY_LONG_STRING;
-        // Ok. Enough room?
-        if ((_outputTail + byteLen + 1) < _outputEnd) {
-            System.arraycopy(bytes, 0, _outputBuffer, _outputTail, byteLen);
-            _outputTail += byteLen;
-        } else {
-            _flushBuffer();
-            // either way, do intermediate copy if name is relatively short
-            // Need to copy?
-            if (byteLen < MIN_BUFFER_LENGTH) {
-                System.arraycopy(bytes, 0, _outputBuffer, _outputTail, byteLen);
-                _outputTail += byteLen;
-            } else {
-                // otherwise, just write as is
-                if (_outputTail > 0) {
-                    _flushBuffer();
-                }
-                _out.write(bytes, 0, byteLen);
-            }
-        }
-        _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
-    }
-
-    protected final void _writeFieldNameUnicode(SerializableString name, byte[] bytes)
-        throws IOException, JsonGenerationException
-    {
-        final int byteLen = bytes.length;
-
-        // Common case: short Unicode name that fits in output buffer
-        if (byteLen <= MAX_SHORT_NAME_UNICODE_BYTES) {
-            if ((_outputTail + byteLen) >= _outputEnd) { // need marker byte and actual bytes
-                _flushBuffer();
-            }
-            // note: since 2 is smaller allowed length, offset differs from one used for
-            _outputBuffer[_outputTail++] = (byte) ((TOKEN_PREFIX_KEY_UNICODE - 2) + byteLen);
-
-            System.arraycopy(bytes, 0, _outputBuffer, _outputTail, byteLen);
-            _outputTail += byteLen;
-            return;
-        }
-        if (_outputTail >= _outputEnd) {
-            _flushBuffer();
-        }
-        _outputBuffer[_outputTail++] = TOKEN_KEY_LONG_STRING;
-        // Ok. Enough room?
-        if ((_outputTail + byteLen + 1) < _outputEnd) {
-            System.arraycopy(bytes, 0, _outputBuffer, _outputTail, byteLen);
-            _outputTail += byteLen;
-        } else {
-            _flushBuffer();
-            // either way, do intermediate copy if name is relatively short
-            // Need to copy?
-            if (byteLen < MIN_BUFFER_LENGTH) {
-                System.arraycopy(bytes, 0, _outputBuffer, _outputTail, byteLen);
-                _outputTail += byteLen;
-            } else {
-                // otherwise, just write as is
-                if (_outputTail > 0) {
-                    _flushBuffer();
-                }
-                _out.write(bytes, 0, byteLen);
-            }
-        }
-        _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
     }
 
     /*
@@ -592,86 +408,77 @@ public class CBORGenerator
             return;
         }
         _verifyValueWrite("write String value");
-        int len = text.length();
+        _writeString(text);
+    }
+
+    @Override
+    public final void writeString(SerializableString sstr) throws IOException
+    {
+        _verifyValueWrite("write String value");
+        byte[] raw = sstr.asUnquotedUTF8();
+        final int len = raw.length;
         if (len == 0) {
             _writeByte(TOKEN_LITERAL_EMPTY_STRING);
             return;
         }
-        // Longer string handling off-lined
-        if (len > MAX_SHARED_STRING_LENGTH_BYTES) {
-            _writeNonSharedString(text, len);
-            return;
-        }
-        // possibly short string (but not necessarily)
-        // first: ensure we have enough space
-        if ((_outputTail + MIN_BUFFER_FOR_POSSIBLE_SHORT_STRING) >= _outputEnd) {
-            _flushBuffer();
-        }
-        // then let's copy String chars to char buffer, faster than using getChar (measured, profiled)
-        text.getChars(0, len, _charBuffer, 0);
-        int origOffset = _outputTail;
-        ++_outputTail; // to leave room for type token
-        int byteLen = _shortUTF8Encode(_charBuffer, 0, len);
-        if (byteLen <= MAX_SHORT_VALUE_STRING_BYTES) { // yes, is short indeed
-            if (byteLen == len) { // and all ASCII
-                _outputBuffer[origOffset] = (byte) ((TOKEN_PREFIX_TINY_ASCII - 1) + byteLen);
-            } else { // not just ASCII
-                // note: since length 1 can not be used here, value range is offset by 2, not 1
-                _outputBuffer[origOffset] = (byte) ((TOKEN_PREFIX_TINY_UNICODE - 2) +  byteLen);
-            }
-        } else { // nope, longer String 
-            _outputBuffer[origOffset] = (byteLen == len) ? TOKEN_BYTE_LONG_STRING_ASCII
-                    : TOKEN_MISC_LONG_TEXT_UNICODE;
-            // and we will need String end marker byte
-            _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
-        }
-    }
-
-    /**
-     * Helper method called to handle cases where String value to write is known
-     * to be long enough not to be shareable.
-     */
-    private final void _writeNonSharedString(final String text, final int len)
-        throws IOException,JsonGenerationException
-    {
-        // First: can we at least make a copy to char[]?
-        if (len > _charBufferLength) { // nope; need to skip copy step (alas; this is slower)
-            _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
-            _slowUTF8Encode(text);
-            _writeByte(BYTE_MARKER_END_OF_STRING);
-            return;
-        }
-        text.getChars(0, len, _charBuffer, 0);
-        // Expansion can be 3x for Unicode; and then there's type byte and end marker, so:
-        int maxLen = len + len + len + 2;
-        // Next: does it always fit within output buffer?
-        if (maxLen > _outputBuffer.length) { // nope
-            // can't rewrite type buffer, so can't speculate it might be all-ASCII
-            _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
-            _mediumUTF8Encode(_charBuffer, 0, len);
-            _writeByte(BYTE_MARKER_END_OF_STRING);
-            return;
-        }
-        
-        if ((_outputTail + maxLen) >= _outputEnd) {
-            _flushBuffer();
-        }
-        int origOffset = _outputTail;
-        // can't say for sure if it's ASCII or Unicode, so:
-        _writeByte(TOKEN_BYTE_LONG_STRING_ASCII);
-        int byteLen = _shortUTF8Encode(_charBuffer, 0, len);
-        // If not ASCII, fix type:
-        if (byteLen > len) {
-            _outputBuffer[origOffset] = TOKEN_MISC_LONG_TEXT_UNICODE;
-        }
-        _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;                
+        _writeInt32(PREFIX_TYPE_TEXT, len);
+        _writeBytes(raw, 0, len);
     }
     
     @Override
-    public void writeString(char[] text, int offset, int len) throws IOException, JsonGenerationException
+    public void writeString(char[] text, int offset, int len) throws IOException
+    {
+        _verifyValueWrite("write String value");
+        _writeString(text, offset, len);
+    }
+
+    @Override
+    public void writeRawUTF8String(byte[] raw, int offset, int len) throws IOException
     {
         _verifyValueWrite("write String value");
         if (len == 0) {
+            _writeByte(BYTE_EMPTY_STRING);
+            return;
+        }
+        if (len == 0) {
+            _writeByte(TOKEN_LITERAL_EMPTY_STRING);
+            return;
+        }
+        _writeInt32(PREFIX_TYPE_TEXT, len);
+        _writeBytes(raw, 0, len);
+    }
+
+    @Override
+    public final void writeUTF8String(byte[] text, int offset, int len) throws IOException
+    {
+        // Since no escaping is needed, same as 'writeRawUTF8String'
+        writeRawUTF8String(text, offset, len);
+    }
+
+    /*
+    /**********************************************************
+    /* Low-level text output
+    /**********************************************************
+     */
+
+    protected final void _writeString(String name) throws IOException
+    {
+        int len = name.length();
+        if (len == 0) {
+            _writeByte(BYTE_EMPTY_STRING);
+            return;
+        }
+        char[] cbuf = _charBuffer;
+        if (len > cbuf.length) {
+            _charBuffer = cbuf = new char[Math.max(_charBuffer.length + 32, len)];
+        }
+        name.getChars(0, len, cbuf, 0);
+        _writeString(cbuf, 0, len);
+    }
+    
+    protected void _writeString(char[] text, int offset, int len) throws IOException
+    {
+        if (len == 0) { // empty String the same, regardless of char[] or byte[]
             _writeByte(TOKEN_LITERAL_EMPTY_STRING);
             return;
         }
@@ -720,99 +527,18 @@ public class CBORGenerator
         }
     }
 
-    @Override
-    public final void writeString(SerializableString sstr)
-        throws IOException, JsonGenerationException
+    /*
+    protected void _writeString(byte[] raw, int offset, int len) throws IOException
     {
-        _verifyValueWrite("write String value");
-        // First: is it empty?
-        String str = sstr.getValue();
-        int len = str.length();
         if (len == 0) {
             _writeByte(TOKEN_LITERAL_EMPTY_STRING);
             return;
         }
-        // If not, use pre-encoded version
-        byte[] raw = sstr.asUnquotedUTF8();
-        final int byteLen = raw.length;
-        
-        if (byteLen <= MAX_SHORT_VALUE_STRING_BYTES) { // short string
-            // first: ensure we have enough space
-            if ((_outputTail + byteLen + 1) >= _outputEnd) {
-                _flushBuffer();
-            }
-            // ASCII or Unicode?
-            int typeToken = (byteLen == len)
-                    ? ((TOKEN_PREFIX_TINY_ASCII - 1) + byteLen)
-                    : ((TOKEN_PREFIX_TINY_UNICODE - 2) + byteLen)
-                    ;
-            _outputBuffer[_outputTail++] = (byte) typeToken;
-            System.arraycopy(raw, 0, _outputBuffer, _outputTail, byteLen);
-            _outputTail += byteLen;
-        } else { // "long" String, never shared
-            // but might still fit within buffer?
-            byte typeToken = (byteLen == len) ? TOKEN_BYTE_LONG_STRING_ASCII
-                    : TOKEN_MISC_LONG_TEXT_UNICODE;
-            _writeByte(typeToken);
-            _writeBytes(raw, 0, raw.length);
-            _writeByte(BYTE_MARKER_END_OF_STRING);
-        }
+        _writeInt32(PREFIX_TYPE_TEXT, len);
+        _writeBytes(raw, offset, len);
     }
+    */
 
-    @Override
-    public void writeRawUTF8String(byte[] text, int offset, int len)
-        throws IOException, JsonGenerationException
-    {
-        _verifyValueWrite("write String value");
-        // first: is it empty String?
-        if (len == 0) {
-            _writeByte(TOKEN_LITERAL_EMPTY_STRING);
-            return;
-        }
-        /* Other practical limitation is that we do not really know if it might be
-         * ASCII or not; and figuring it out is rather slow. So, best we can do is
-         * to declare we do not know it is ASCII (i.e. "is Unicode").
-         */
-        if (len <= MAX_SHARED_STRING_LENGTH_BYTES) { // up to 65 Unicode bytes
-            // first: ensure we have enough space
-            if ((_outputTail + len) >= _outputEnd) { // bytes, plus one for type indicator
-                _flushBuffer();
-            }
-            if (len == 1) {
-                _outputBuffer[_outputTail++] = TOKEN_PREFIX_TINY_ASCII; // length of 1 cancels out (len-1)
-                _outputBuffer[_outputTail++] = text[offset];
-            } else {
-                _outputBuffer[_outputTail++] = (byte) ((TOKEN_PREFIX_TINY_UNICODE - 2) + len);
-                System.arraycopy(text, offset, _outputBuffer, _outputTail, len);
-                _outputTail += len;
-            }
-        } else { // "long" String
-            // but might still fit within buffer?
-            int maxLen = len + len + len + 2;
-            if (maxLen <= _outputBuffer.length) { // yes indeed
-                if ((_outputTail + maxLen) >= _outputEnd) {
-                    _flushBuffer();
-                }
-                _outputBuffer[_outputTail++] = TOKEN_MISC_LONG_TEXT_UNICODE;
-                System.arraycopy(text, offset, _outputBuffer, _outputTail, len);
-                _outputTail += len;
-                _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
-            } else {
-                _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
-                _writeBytes(text, offset, len);
-                _writeByte(BYTE_MARKER_END_OF_STRING);
-            }
-        }
-    }
-
-    @Override
-    public final void writeUTF8String(byte[] text, int offset, int len)
-        throws IOException, JsonGenerationException
-    {
-        // Since no escaping is needed, same as 'writeRawUTF8String'
-        writeRawUTF8String(text, offset, len);
-    }
-    
     /*
     /**********************************************************
     /* Output method implementations, unprocessed ("raw")
@@ -820,37 +546,37 @@ public class CBORGenerator
      */
 
     @Override
-    public void writeRaw(String text) throws IOException, JsonGenerationException {
+    public void writeRaw(String text) throws IOException {
         throw _notSupported();
     }
 
     @Override
-    public void writeRaw(String text, int offset, int len) throws IOException, JsonGenerationException {
+    public void writeRaw(String text, int offset, int len) throws IOException {
         throw _notSupported();
     }
 
     @Override
-    public void writeRaw(char[] text, int offset, int len) throws IOException, JsonGenerationException {
+    public void writeRaw(char[] text, int offset, int len) throws IOException {
         throw _notSupported();
     }
 
     @Override
-    public void writeRaw(char c) throws IOException, JsonGenerationException {
+    public void writeRaw(char c) throws IOException {
         throw _notSupported();
     }
 
     @Override
-    public void writeRawValue(String text) throws IOException, JsonGenerationException {
+    public void writeRawValue(String text) throws IOException {
         throw _notSupported();
     }
 
     @Override
-    public void writeRawValue(String text, int offset, int len) throws IOException, JsonGenerationException {
+    public void writeRawValue(String text, int offset, int len) throws IOException {
         throw _notSupported();
     }
 
     @Override
-    public void writeRawValue(char[] text, int offset, int len) throws IOException, JsonGenerationException {
+    public void writeRawValue(char[] text, int offset, int len) throws IOException {
         throw _notSupported();
     }
     
@@ -861,7 +587,7 @@ public class CBORGenerator
      */
 
     @Override
-    public void writeBinary(Base64Variant b64variant, byte[] data, int offset, int len) throws IOException, JsonGenerationException
+    public void writeBinary(Base64Variant b64variant, byte[] data, int offset, int len) throws IOException
     {
         if (data == null) {
             writeNull();
@@ -874,7 +600,7 @@ public class CBORGenerator
 
     @Override
     public int writeBinary(InputStream data, int dataLength)
-        throws IOException, JsonGenerationException
+        throws IOException
     {
         // Smile requires knowledge of length in advance, since binary is length-prefixed
         if (dataLength < 0) {
@@ -893,7 +619,7 @@ public class CBORGenerator
     
     @Override
     public int writeBinary(Base64Variant b64variant, InputStream data, int dataLength)
-        throws IOException, JsonGenerationException
+        throws IOException
     {
         return writeBinary(data, dataLength);
     }
@@ -905,7 +631,7 @@ public class CBORGenerator
      */
 
     @Override
-    public void writeBoolean(boolean state) throws IOException, JsonGenerationException
+    public void writeBoolean(boolean state) throws IOException
     {
         _verifyValueWrite("write boolean value");
         if (state) {
@@ -916,7 +642,7 @@ public class CBORGenerator
     }
 
     @Override
-    public void writeNull() throws IOException, JsonGenerationException
+    public void writeNull() throws IOException
     {
         _verifyValueWrite("write null value");
         _writeByte(BYTE_FALSE);
@@ -938,7 +664,7 @@ public class CBORGenerator
     }
 
     @Override
-    public void writeNumber(long l) throws IOException, JsonGenerationException
+    public void writeNumber(long l) throws IOException
     {
         // First: maybe 32 bits is enough?
         if (l <= MAX_INT_AS_LONG && l >= MIN_INT_AS_LONG) {
@@ -967,7 +693,7 @@ public class CBORGenerator
     }
 
     @Override
-    public void writeNumber(BigInteger v) throws IOException, JsonGenerationException
+    public void writeNumber(BigInteger v) throws IOException
     {
         if (v == null) {
             writeNull();
@@ -992,7 +718,7 @@ public class CBORGenerator
     }
     
     @Override
-    public void writeNumber(double d) throws IOException, JsonGenerationException
+    public void writeNumber(double d) throws IOException
     {
         _verifyValueWrite("write number");
         _ensureRoomForOutput(11);
@@ -1017,7 +743,7 @@ public class CBORGenerator
     }
 
     @Override
-    public void writeNumber(float f) throws IOException, JsonGenerationException
+    public void writeNumber(float f) throws IOException
     {
         // Ok, now, we needed token type byte plus 5 data bytes (7 bits each)
         _ensureRoomForOutput(6);
@@ -1037,7 +763,7 @@ public class CBORGenerator
     }
 
     @Override
-    public void writeNumber(BigDecimal dec) throws IOException, JsonGenerationException
+    public void writeNumber(BigDecimal dec) throws IOException
     {
         if (dec == null) {
             writeNull();
@@ -1098,8 +824,7 @@ public class CBORGenerator
      */
     
     @Override
-    protected final void _verifyValueWrite(String typeMsg)
-        throws IOException, JsonGenerationException
+    protected final void _verifyValueWrite(String typeMsg) throws IOException
     {
         int status = _writeContext.writeValue();
         if (status == JsonWriteContext.STATUS_EXPECT_NAME) {

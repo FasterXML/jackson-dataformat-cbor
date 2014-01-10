@@ -55,6 +55,8 @@ public final class CBORConstants
     public final static byte BYTE_TRUE = (byte) (PREFIX_TYPE_MISC + 21);
     public final static byte BYTE_NULL = (byte) (PREFIX_TYPE_MISC + 22);
 
+    public final static byte BYTE_EMPTY_STRING = (byte) (PREFIX_TYPE_TEXT);
+    
     public final static byte BYTE_FLOAT32 = (byte) (PREFIX_TYPE_MISC + 26);
     public final static byte BYTE_FLOAT64 = (byte) (PREFIX_TYPE_MISC + 27);
 
