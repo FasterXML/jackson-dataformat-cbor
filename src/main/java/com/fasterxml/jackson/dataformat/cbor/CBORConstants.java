@@ -39,6 +39,8 @@ public final class CBORConstants
     
     public final static int SUFFIX_INDEFINITE = 0x1F;
 
+    public final static int MASK_MAJOR_TYPE = 0xE0;
+    
     /*
     /**********************************************************
     /* Actual type and marker bytes
@@ -101,5 +103,10 @@ public final class CBORConstants
             table[c] = code;
         }
         sUtf8UnitLengths = table;
+    }
+
+    public static boolean hasMajorType(int expType, byte encoded) {
+        int actual = (encoded & MASK_MAJOR_TYPE) >> 3;
+        return (actual == expType);
     }
 }

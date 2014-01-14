@@ -13,11 +13,6 @@ import com.fasterxml.jackson.core.sym.BytesToNameCanonicalizer;
  */
 public class CBORParserBootstrapper
 {
-    private final static byte TOKEN_KEY_LONG_STRING = 0x34;
-
-    private final static byte TOKEN_LITERAL_START_ARRAY = (byte) 0xF8;
-    private final static byte TOKEN_LITERAL_START_OBJECT = (byte) 0xFA;
-
     /*
     /**********************************************************
     /* Configuration
@@ -25,7 +20,6 @@ public class CBORParserBootstrapper
      */
 
     protected final IOContext _context;
-
     protected final InputStream _in;
     
     /*
@@ -35,10 +29,7 @@ public class CBORParserBootstrapper
      */
 
     protected final byte[] _inputBuffer;
-
-    protected int _inputPtr;
-
-    protected int _inputEnd;
+    protected int _inputPtr, _inputEnd;
 
     /**
      * Flag that indicates whether buffer above is to be recycled
@@ -95,24 +86,19 @@ public class CBORParserBootstrapper
         throws IOException, JsonParseException
     {
         BytesToNameCanonicalizer can = rootByteSymbols.makeChild(true, internNames);
-        // We just need a single byte, really, to know if it starts with header
+        // We just need a single byte to recognize possible "empty" document.
         ensureLoaded(1);
         CBORParser p = new CBORParser(_context, generalParserFeatures, smileFeatures,
                 codec, can, 
                 _in, _inputBuffer, _inputPtr, _inputEnd, _bufferRecyclable);
         if (_inputPtr < _inputEnd) { // only false for empty doc
-            /*
-            if (_inputBuffer[_inputPtr] == CBORConstants.HEADER_BYTE_1) {
-                // need to ensure it gets properly handled so caller won't see the signature
-                hadSig = p.handleSignature(true, true);
-            }
-            */
+            ; // anything we should verify? In future, could verify
         } else {
-            /* 11-Oct-2012, tatu: Actually, let's allow empty documents even if
+            /* 13-Jan-2014, tatu: Actually, let's allow empty documents even if
              *   header signature would otherwise be needed. This is useful for
-             *   JAX-RS provider, empty PUT/POST payloads.
+             *   JAX-RS provider, empty PUT/POST payloads?
              */
-            return p;
+            ;
         }
         return p;
     }
@@ -130,99 +116,46 @@ public class CBORParserBootstrapper
             return MatchStrength.INCONCLUSIVE;
         }
         // We always need at least two bytes to determine, so
-        byte b1 = acc.nextByte();
-        if (!acc.hasMoreBytes()) {
-            return MatchStrength.INCONCLUSIVE;
-        }
-        byte b2 = acc.nextByte();
-        
-        // First: do we see 3 "magic bytes"? If so, we are golden
-        /*
-        if (b1 == CBORConstants.HEADER_BYTE_1) { // yeah, looks like marker
-            if (b2 != CBORConstants.HEADER_BYTE_2) {
-                return MatchStrength.NO_MATCH;
-            }
-            if (!acc.hasMoreBytes()) {
+        byte b = acc.nextByte();
+
+        /* 13-Jan-2014, tatu: Let's actually consider indefine-length Objects
+         *    as conclusive matches if empty, or start with a text key.
+         */
+        if (b == CBORConstants.BYTE_OBJECT_INDEFINITE) {
+            if (acc.hasMoreBytes()) {
+                b = acc.nextByte();
+                if (b == CBORConstants.BYTE_BREAK) {
+                    return MatchStrength.SOLID_MATCH;
+                }
+                if (CBORConstants.hasMajorType(CBORConstants.MAJOR_TYPE_TEXT, b)) {
+                    return MatchStrength.SOLID_MATCH;
+                }
+                // other types; unlikely but can't exactly rule out
                 return MatchStrength.INCONCLUSIVE;
             }
-            return (acc.nextByte() == CBORConstants.HEADER_BYTE_3) ?
-                    MatchStrength.FULL_MATCH : MatchStrength.NO_MATCH;
         }
-        */
-        // Otherwise: ideally either Object or Array:
-        if (b1 == TOKEN_LITERAL_START_OBJECT) {
-            /* Object is bit easier, because now we need to get new name; i.e. can
-             * rule out name back-refs
-             */
-            if (b2 == TOKEN_KEY_LONG_STRING) {
-                return MatchStrength.SOLID_MATCH;
+        if (b == CBORConstants.BYTE_ARRAY_INDEFINITE) {
+            if (acc.hasMoreBytes()) {
+                b = acc.nextByte();
+                if (b == CBORConstants.BYTE_BREAK) {
+                    return MatchStrength.SOLID_MATCH;
+                }
+                // all kinds of types are possible, so let's just acknowledge it as possible:
+                return MatchStrength.WEAK_MATCH;
             }
-            int ch = (int) b2 & 0xFF;
-            if (ch >= 0x80 && ch < 0xF8) {
+        }
+
+        // Other types; the only one where there's significant checking possibility
+        // is in last, "misc" category
+        if (CBORConstants.hasMajorType(CBORConstants.MAJOR_TYPE_MISC, b)) {
+            if ((b == CBORConstants.BYTE_FALSE)
+                    || (b == CBORConstants.BYTE_TRUE)
+                    || (b == CBORConstants.BYTE_NULL)) {
                 return MatchStrength.SOLID_MATCH;
             }
             return MatchStrength.NO_MATCH;
         }
-        // Array bit trickier
-        if (b1 == TOKEN_LITERAL_START_ARRAY) {
-            if (!acc.hasMoreBytes()) {
-                return MatchStrength.INCONCLUSIVE;
-            }
-            /* For arrays, we will actually accept much wider range of values (including
-             * things that could otherwise collide)
-             */
-            if (likelyCBORValue(b2) || possibleCBORValue(b2, true)) {
-                return MatchStrength.SOLID_MATCH;
-            }
-            return MatchStrength.NO_MATCH;
-        }
-        // Scalar values are pretty weak, albeit possible; require more certain match, consider it weak:
-        if (likelyCBORValue(b1) || possibleCBORValue(b2, false)) {
-            return MatchStrength.SOLID_MATCH;
-        }
-        return MatchStrength.NO_MATCH;
-    }
-
-    private static boolean likelyCBORValue(byte b)
-    {
-        /*
-        if (   (b == TOKEN_MISC_LONG_TEXT_ASCII) // 0xE0
-            || (b == TOKEN_MISC_LONG_TEXT_UNICODE) // 0xE4
-            || (b == TOKEN_MISC_BINARY_7BIT) // 0xE8
-            || (b == TOKEN_LITERAL_START_ARRAY) // 0xF8
-            || (b == TOKEN_LITERAL_START_OBJECT) // 0xFA
-            ) {
-            return true;
-        }
-        int ch = b & 0xFF;
-        // ASCII ctrl char range is pretty good match too
-        if (ch >= 0x80 && ch <= 0x9F) {
-            return true;
-        }
-        */
-        return false;
-    }
-
-    /**
-     * @param lenient Whether to consider more speculative matches or not
-     *   (typically true when there is context like start-array)
-     */
-    private static boolean possibleCBORValue(byte b, boolean lenient)
-    {
-        int ch = (int) b & 0xFF;
-        // note: we know that likely matches have been handled already, so...
-        if (ch >= 0x80) {
-            return (ch <= 0xE0);
-        }
-        if (lenient) {
-            if (ch >= 0x40) { // tiny/short ASCII
-                return true;
-            }
-            if (ch >- 0x20) { // various constants
-                return (ch < 0x2C); // many reserved bytes that can't be seen
-            }
-        }
-        return false;
+        return MatchStrength.INCONCLUSIVE;
     }
     
     /*
@@ -231,8 +164,7 @@ public class CBORParserBootstrapper
     /**********************************************************
      */
 
-    protected boolean ensureLoaded(int minimum)
-        throws IOException
+    protected boolean ensureLoaded(int minimum) throws IOException
     {
         if (_in == null) { // block source; nothing more to load
             return false;
