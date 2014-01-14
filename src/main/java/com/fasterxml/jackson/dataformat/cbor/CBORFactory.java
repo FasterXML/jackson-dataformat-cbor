@@ -7,6 +7,7 @@ import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.format.InputAccessor;
 import com.fasterxml.jackson.core.format.MatchStrength;
 import com.fasterxml.jackson.core.io.IOContext;
+import com.fasterxml.jackson.core.util.BufferRecycler;
 
 /**
  * Factory used for constructing {@link CBORParser} and {@link CBORGenerator}
@@ -25,7 +26,7 @@ import com.fasterxml.jackson.core.io.IOContext;
  */
 public class CBORFactory extends JsonFactory
 {
-    private static final long serialVersionUID = -4517030652345943412L;
+    private static final long serialVersionUID = 437616072383303549L;
 //    private static final long serialVersionUID = -1696783009312472365L;
 
     /*
@@ -58,17 +59,8 @@ public class CBORFactory extends JsonFactory
     /**********************************************************
      */
 
-    /**
-     * Whether non-supported methods (ones trying to output using
-     * char-based targets like {@link java.io.Writer}, for example)
-     * should be delegated to regular Jackson JSON processing
-     * (if set to true); or throw {@link UnsupportedOperationException}
-     * (if set to false)
-     */
-    protected boolean _cfgDelegateToTextual;
-
-    protected int _smileParserFeatures;
-    protected int _smileGeneratorFeatures;
+    protected int _formatParserFeatures;
+    protected int _formatGeneratorFeatures;
 
     /*
     /**********************************************************
@@ -90,8 +82,8 @@ public class CBORFactory extends JsonFactory
 
     public CBORFactory(ObjectCodec oc) {
         super(oc);
-        _smileParserFeatures = DEFAULT_SMILE_PARSER_FEATURE_FLAGS;
-        _smileGeneratorFeatures = DEFAULT_SMILE_GENERATOR_FEATURE_FLAGS;
+        _formatParserFeatures = DEFAULT_SMILE_PARSER_FEATURE_FLAGS;
+        _formatGeneratorFeatures = DEFAULT_SMILE_GENERATOR_FEATURE_FLAGS;
     }
 
     /**
@@ -103,22 +95,16 @@ public class CBORFactory extends JsonFactory
     public CBORFactory(CBORFactory src, ObjectCodec oc)
     {
         super(src, oc);
-        _cfgDelegateToTextual = src._cfgDelegateToTextual;
-        _smileParserFeatures = src._smileParserFeatures;
-        _smileGeneratorFeatures = src._smileGeneratorFeatures;
+        _formatParserFeatures = src._formatParserFeatures;
+        _formatGeneratorFeatures = src._formatGeneratorFeatures;
     }
 
-    // @since 2.1
     @Override
     public CBORFactory copy()
     {
         _checkInvalidCopy(CBORFactory.class);
         // note: as with base class, must NOT copy mapper reference
         return new CBORFactory(this, null);
-    }
-    
-    public void delegateToTextual(boolean state) {
-        _cfgDelegateToTextual = state;
     }
 
     /*
@@ -206,7 +192,7 @@ public class CBORFactory extends JsonFactory
      * (check {@link CBORParser.Feature} for list of features)
      */
     public CBORFactory enable(CBORParser.Feature f) {
-        _smileParserFeatures |= f.getMask();
+        _formatParserFeatures |= f.getMask();
         return this;
     }
 
@@ -215,7 +201,7 @@ public class CBORFactory extends JsonFactory
      * (check {@link CBORParser.Feature} for list of features)
      */
     public CBORFactory disable(CBORParser.Feature f) {
-        _smileParserFeatures &= ~f.getMask();
+        _formatParserFeatures &= ~f.getMask();
         return this;
     }
 
@@ -223,7 +209,7 @@ public class CBORFactory extends JsonFactory
      * Checked whether specified parser feature is enabled.
      */
     public final boolean isEnabled(CBORParser.Feature f) {
-        return (_smileParserFeatures & f.getMask()) != 0;
+        return (_formatParserFeatures & f.getMask()) != 0;
     }
 
     /*
@@ -253,7 +239,7 @@ public class CBORFactory extends JsonFactory
      * (check {@link CBORGenerator.Feature} for list of features)
      */
     public CBORFactory enable(CBORGenerator.Feature f) {
-        _smileGeneratorFeatures |= f.getMask();
+        _formatGeneratorFeatures |= f.getMask();
         return this;
     }
 
@@ -262,7 +248,7 @@ public class CBORFactory extends JsonFactory
      * (check {@link CBORGenerator.Feature} for list of features)
      */
     public CBORFactory disable(CBORGenerator.Feature f) {
-        _smileGeneratorFeatures &= ~f.getMask();
+        _formatGeneratorFeatures &= ~f.getMask();
         return this;
     }
 
@@ -270,7 +256,7 @@ public class CBORFactory extends JsonFactory
      * Check whether specified generator feature is enabled.
      */
     public final boolean isEnabled(CBORGenerator.Feature f) {
-        return (_smileGeneratorFeatures & f.getMask()) != 0;
+        return (_formatGeneratorFeatures & f.getMask()) != 0;
     }
     
     /*
@@ -281,116 +267,33 @@ public class CBORFactory extends JsonFactory
 
     @SuppressWarnings("resource")
     @Override
-    public CBORParser createParser(File f)
-        throws IOException, JsonParseException
-    {
+    public CBORParser createParser(File f) throws IOException {
         return _createParser(new FileInputStream(f), _createContext(f, true));
     }
 
     @Override
-    public CBORParser createParser(URL url)
-        throws IOException, JsonParseException
-    {
+    public CBORParser createParser(URL url) throws IOException {
         return _createParser(_optimizedStreamFromURL(url), _createContext(url, true));
     }
 
     @Override
-    public CBORParser createParser(InputStream in)
-        throws IOException, JsonParseException
-    {
+    public CBORParser createParser(InputStream in) throws IOException {
         return _createParser(in, _createContext(in, false));
     }
 
-    //public JsonParser createJsonParser(Reader r)
-    
     @Override
-    public CBORParser createParser(byte[] data)
-        throws IOException, JsonParseException
-    {
-        IOContext ctxt = _createContext(data, true);
-        return _createParser(data, 0, data.length, ctxt);
+    public CBORParser createParser(byte[] data) throws IOException {
+        return _createParser(data, 0, data.length, _createContext(data, true));
     }
     
     @Override
-    public CBORParser createParser(byte[] data, int offset, int len)
-        throws IOException, JsonParseException
-    {
-        return _createParser(data, offset, len, _createContext(data, true));
-    }
-   
-    /*
-    /**********************************************************
-    /* Overridden parser factory methods, old (pre-2.1)
-    /**********************************************************
-     */
-    
-    /**
-     * @deprecated Since 2.1 Use {@link #createParser(File)} instead
-     * @since 2.1
-     */
-    @SuppressWarnings("resource")
-    @Deprecated
-    @Override
-    public CBORParser createJsonParser(File f)
-        throws IOException, JsonParseException
-    {
-        return _createParser(new FileInputStream(f), _createContext(f, true));
-    }
-
-    /**
-     * @deprecated Since 2.1 Use {@link #createParser(URL)} instead
-     * @since 2.1
-     */
-    @Deprecated
-    @Override
-    public CBORParser createJsonParser(URL url)
-        throws IOException, JsonParseException
-    {
-        return _createParser(_optimizedStreamFromURL(url), _createContext(url, true));
-    }
-
-    /**
-     * @deprecated Since 2.1 Use {@link #createParser(InputStream)} instead
-     * @since 2.1
-     */
-    @Deprecated
-    @Override
-    public CBORParser createJsonParser(InputStream in)
-        throws IOException, JsonParseException
-    {
-        return _createParser(in, _createContext(in, false));
-    }
-
-    //public JsonParser createJsonParser(Reader r)
-    
-    /**
-     * @deprecated Since 2.1 Use {@link #createParser(byte[])} instead
-     * @since 2.1
-     */
-    @Deprecated
-    @Override
-    public CBORParser createJsonParser(byte[] data)
-        throws IOException, JsonParseException
-    {
-        IOContext ctxt = _createContext(data, true);
-        return _createParser(data, 0, data.length, ctxt);
-    }
-    
-    /**
-     * @deprecated Since 2.1 Use {@link #createParser(byte[],int,int)} instead
-     * @since 2.1
-     */
-    @Deprecated
-    @Override
-    public CBORParser createJsonParser(byte[] data, int offset, int len)
-        throws IOException, JsonParseException
-    {
+    public CBORParser createParser(byte[] data, int offset, int len) throws IOException {
         return _createParser(data, offset, len, _createContext(data, true));
     }
 
     /*
     /**********************************************************
-    /* Overridden generator factory methods, new (2.1)
+    /* Overridden generator factory methods
     /**********************************************************
      */
 
@@ -402,9 +305,7 @@ public class CBORFactory extends JsonFactory
      * argument is ignored.
      */
     @Override
-    public CBORGenerator createGenerator(OutputStream out, JsonEncoding enc)
-        throws IOException
-    {
+    public CBORGenerator createGenerator(OutputStream out, JsonEncoding enc) throws IOException {
         // false -> we won't manage the stream unless explicitly directed to
         return _createGenerator(out, _createContext(out, false));
     }
@@ -417,70 +318,36 @@ public class CBORFactory extends JsonFactory
      * to be passed to this method.
      */
     @Override
-    public CBORGenerator createGenerator(OutputStream out) throws IOException
-    {
-        // false -> we won't manage the stream unless explicitly directed to
-        return _createGenerator(out, _createContext(out, false));
-    }
-    
-    /*
-    /**********************************************************
-    /* Overridden generator factory methods, old (pre-2.1)
-    /**********************************************************
-     */
-    
-    /**
-     * @deprecated Since 2.1 Use {@link #createGenerator(OutputStream)} instead
-     * @since 2.1
-     */
-    @Deprecated
-    @Override
-    public CBORGenerator createJsonGenerator(OutputStream out, JsonEncoding enc)
-        throws IOException
-    {
+    public CBORGenerator createGenerator(OutputStream out) throws IOException {
         // false -> we won't manage the stream unless explicitly directed to
         return _createGenerator(out, _createContext(out, false));
     }
 
-    /**
-     * @deprecated Since 2.1 Use {@link #createGenerator(OutputStream)} instead
-     * @since 2.1
-     */
-    @Deprecated
-    @Override
-    public CBORGenerator createJsonGenerator(OutputStream out) throws IOException
-    {
-        // false -> we won't manage the stream unless explicitly directed to
-        IOContext ctxt = _createContext(out, false);
-        return _createGenerator(out, ctxt);
-    }
-
-    @Deprecated
-    @Override
-    protected CBORGenerator _createUTF8JsonGenerator(OutputStream out, IOContext ctxt)
-        throws IOException
-    {
-        return _createGenerator(out, ctxt);
-    }
-    
     /*
     /******************************************************
     /* Overridden internal factory methods
     /******************************************************
      */
 
-    //protected IOContext _createContext(Object srcRef, boolean resourceManaged)
+    @Override
+    protected IOContext _createContext(Object srcRef, boolean resourceManaged) {
+        return super._createContext(srcRef, resourceManaged);
+    }
 
+    @Override
+    public BufferRecycler _getBufferRecycler() {
+        return super._getBufferRecycler();
+    }
+    
     /**
      * Overridable factory method that actually instantiates desired
      * parser.
      */
     @Override
-    protected CBORParser _createParser(InputStream in, IOContext ctxt)
-        throws IOException, JsonParseException
+    protected CBORParser _createParser(InputStream in, IOContext ctxt) throws IOException
     {
         return new CBORParserBootstrapper(ctxt, in).constructParser(_parserFeatures,
-        		_smileParserFeatures, isEnabled(JsonFactory.Feature.INTERN_FIELD_NAMES),
+        		_formatParserFeatures, isEnabled(JsonFactory.Feature.INTERN_FIELD_NAMES),
         		_objectCodec, _rootByteSymbols);
     }
 
@@ -489,13 +356,8 @@ public class CBORFactory extends JsonFactory
      * parser.
      */
     @Override
-    protected JsonParser _createParser(Reader r, IOContext ctxt)
-        throws IOException, JsonParseException
-    {
-        if (_cfgDelegateToTextual) {
-            return super._createParser(r, ctxt);
-        }
-        throw new UnsupportedOperationException("Can not create generator for non-byte-based target");
+    protected JsonParser _createParser(Reader r, IOContext ctxt) throws IOException {
+        return _nonByteSource();
     }
 
     /**
@@ -507,7 +369,7 @@ public class CBORFactory extends JsonFactory
         throws IOException, JsonParseException
     {
         return new CBORParserBootstrapper(ctxt, data, offset, len).constructParser(
-                _parserFeatures, _smileParserFeatures,
+                _parserFeatures, _formatParserFeatures,
                 isEnabled(JsonFactory.Feature.INTERN_FIELD_NAMES),
                 _objectCodec, _rootByteSymbols);
     }
@@ -517,13 +379,8 @@ public class CBORFactory extends JsonFactory
      * generator.
      */
     @Override
-    protected JsonGenerator _createGenerator(Writer out, IOContext ctxt)
-        throws IOException
-    {
-        if (_cfgDelegateToTextual) {
-            return super._createGenerator(out, ctxt);
-        }
-        throw new UnsupportedOperationException("Can not create generator for non-byte-based target");
+    protected JsonGenerator _createGenerator(Writer out, IOContext ctxt) throws IOException {
+        return _nonByteTarget();
     }
 
     @Override
@@ -534,12 +391,16 @@ public class CBORFactory extends JsonFactory
     //public BufferRecycler _getBufferRecycler()
 
     @Override
-    protected Writer _createWriter(OutputStream out, JsonEncoding enc, IOContext ctxt) throws IOException
-    {
-        if (_cfgDelegateToTextual) {
-            return super._createWriter(out, enc, ctxt);
-        }
+    protected Writer _createWriter(OutputStream out, JsonEncoding enc, IOContext ctxt) throws IOException {
+        return _nonByteTarget();
+    }
+
+    protected <T> T _nonByteTarget() {
         throw new UnsupportedOperationException("Can not create generator for non-byte-based target");
+    }
+
+    protected <T> T _nonByteSource() {
+        throw new UnsupportedOperationException("Can not create generator for non-byte-based source");
     }
     
     /*
@@ -548,33 +409,7 @@ public class CBORFactory extends JsonFactory
     /**********************************************************
      */
     
-    protected CBORGenerator _createGenerator(OutputStream out, IOContext ctxt)
-        throws IOException
-    {
-        int feats = _smileGeneratorFeatures;
-        /* One sanity check: MUST write header if shared string values setting is enabled,
-         * or quoting of binary data disabled.
-         * But should we force writing, or throw exception, if settings are in conflict?
-         * For now, let's error out...
-         */
-        CBORGenerator gen = new CBORGenerator(ctxt, _generatorFeatures, feats, _objectCodec, out);
-
-        /*
-        if ((feats & CBORGenerator.Feature.WRITE_HEADER.getMask()) != 0) {
-            gen.writeHeader();
-        } else {
-            if ((feats & CBORGenerator.Feature.CHECK_SHARED_STRING_VALUES.getMask()) != 0) {
-                throw new JsonGenerationException(
-                        "Inconsistent settings: WRITE_HEADER disabled, but CHECK_SHARED_STRING_VALUES enabled; can not construct generator"
-                        +" due to possible data loss (either enable WRITE_HEADER, or disable CHECK_SHARED_STRING_VALUES to resolve)");
-            }
-            if ((feats & CBORGenerator.Feature.ENCODE_BINARY_AS_7BIT.getMask()) == 0) {
-        	throw new JsonGenerationException(
-        			"Inconsistent settings: WRITE_HEADER disabled, but ENCODE_BINARY_AS_7BIT disabled; can not construct generator"
-        			+" due to possible data loss (either enable WRITE_HEADER, or ENCODE_BINARY_AS_7BIT to resolve)");
-            }
-        }
-        */
-        return gen;
+    protected CBORGenerator _createGenerator(OutputStream out, IOContext ctxt) throws IOException {
+        return new CBORGenerator(ctxt, _generatorFeatures, _formatGeneratorFeatures, _objectCodec, out);
     }
 }

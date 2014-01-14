@@ -100,7 +100,6 @@ public class CBORParserBootstrapper
         CBORParser p = new CBORParser(_context, generalParserFeatures, smileFeatures,
                 codec, can, 
                 _in, _inputBuffer, _inputPtr, _inputEnd, _bufferRecyclable);
-        boolean hadSig = false;
         if (_inputPtr < _inputEnd) { // only false for empty doc
             /*
             if (_inputBuffer[_inputPtr] == CBORConstants.HEADER_BYTE_1) {
@@ -109,11 +108,11 @@ public class CBORParserBootstrapper
             }
             */
         } else {
-    	    /* 11-Oct-2012, tatu: Actually, let's allow empty documents even if
-    	     *   header signature would otherwise be needed. This is useful for
-    	     *   JAX-RS provider, empty PUT/POST payloads.
-    	     */
-    	    return p;
+            /* 11-Oct-2012, tatu: Actually, let's allow empty documents even if
+             *   header signature would otherwise be needed. This is useful for
+             *   JAX-RS provider, empty PUT/POST payloads.
+             */
+            return p;
         }
         return p;
     }
