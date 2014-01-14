@@ -18,14 +18,6 @@ import static com.fasterxml.jackson.dataformat.cbor.CBORConstants.*;
  */
 public class CBORGenerator extends GeneratorBase
 {
-    private final static byte BYTE_MARKER_END_OF_STRING = (byte) 0xFC;
-    
-    private final static byte TOKEN_MISC_LONG_TEXT_ASCII = (byte) 0xE0;
-    private final static byte TOKEN_MISC_LONG_TEXT_UNICODE = (byte) 0xE4;
-
-    private final static int TOKEN_PREFIX_TINY_ASCII = 0x40;
-    private final static int TOKEN_PREFIX_TINY_UNICODE = 0x80;
-
     /**
      * Let's ensure that we have big enough output buffer because of
      * safety margins we need for UTF-8 encoding.
@@ -37,12 +29,12 @@ public class CBORGenerator extends GeneratorBase
      * in an empty buffer even if everything encoded in 3-byte sequences; but also
      * fit two full chunks in case of single-byte (ascii) output.
      */
-    private final static int MAX_CHUNK_CHARS = (BYTE_BUFFER_FOR_OUTPUT / 4) - 4;
+    private final static int MAX_LONG_STRING_CHARS = (BYTE_BUFFER_FOR_OUTPUT / 4) - 4;
 
     /**
      * This is the worst case length (in bytes) of maximum chunk we ever write.
      */
-    private final static int MAX_CHUNK_LENGTH = (MAX_CHUNK_CHARS * 3) + 3;
+    private final static int MAX_LONG_STRING_BYTES = (MAX_LONG_STRING_CHARS * 3) + 3;
     
     /**
      * Enumeration that defines all togglable features for Smile generators.
@@ -92,8 +84,6 @@ public class CBORGenerator extends GeneratorBase
      * be for encoding 64-character Strings.
      */
     private final static int MIN_BUFFER_LENGTH = (3 * 256) + 2;
-
-    private final static byte TOKEN_BYTE_LONG_STRING_ASCII = TOKEN_MISC_LONG_TEXT_ASCII;
     
     private final static int SURR1_FIRST = 0xD800;
     private final static int SURR1_LAST = 0xDBFF;
@@ -837,6 +827,25 @@ public class CBORGenerator extends GeneratorBase
             _writeByte(BYTE_EMPTY_STRING);
             return;
         }
+        // Actually, let's not bother with copy for shortest strings
+        if (len <= MAX_SHORT_STRING_CHARS) {
+            _ensureSpace(MAX_SHORT_STRING_BYTES); // can afford approximate length
+            int actual = _encode(_outputTail+1, name, len);
+            final byte[] buf = _outputBuffer;
+            int ix = _outputTail;
+            if (actual < MAX_SHORT_STRING_CHARS) { // fits in prefix byte
+                buf[ix++] = (byte) (PREFIX_TYPE_TEXT + actual);
+                _outputTail = ix + actual;
+                return;
+            }
+            // no, have to move. Blah.
+            System.arraycopy(buf, ix+1, buf, ix+2, actual);
+            buf[ix++] = BYTE_STRING_1BYTE_LEN;
+            buf[ix++] = (byte) actual;
+            _outputTail = ix+actual;
+            return;
+        }
+        
         char[] cbuf = _charBuffer;
         if (len > cbuf.length) {
             _charBuffer = cbuf = new char[Math.max(_charBuffer.length + 32, len)];
@@ -845,79 +854,116 @@ public class CBORGenerator extends GeneratorBase
         _writeString(cbuf, 0, len);
     }
 
+    private final static int MAX_SHORT_STRING_CHARS = 23;
+    private final static int MAX_SHORT_STRING_BYTES = 23 * 3 + 2; // in case it's > 23 bytes
+
+    private final static int MAX_MEDIUM_STRING_CHARS = 255;
+    private final static int MAX_MEDIUM_STRING_BYTES = 255 * 3 + 3; // in case it's > 255 bytes
+
+    protected final void _ensureSpace(int needed) throws IOException {
+        if ((_outputTail + needed + 3) > _outputEnd) {
+            _flushBuffer();
+        }
+    }
+    
     protected void _writeString(char[] text, int offset, int len) throws IOException
     {
-        if (len <= 23) { // possibly short strings (not necessarily)
-            // first: ensure we have enough space
-            if ((_outputTail + 23) >= _outputEnd) {
-                _flushBuffer();
+        if (len <= MAX_SHORT_STRING_CHARS) { // possibly short strings (not necessarily)
+            _ensureSpace(MAX_SHORT_STRING_BYTES); // can afford approximate length
+            int actual = _encode(_outputTail+1, text, offset, len);
+            final byte[] buf = _outputBuffer;
+            int ix = _outputTail;
+            if (actual < MAX_SHORT_STRING_CHARS) { // fits in prefix byte
+                buf[ix++] = (byte) (PREFIX_TYPE_TEXT + actual);
+                _outputTail = ix + actual;
+                return;
             }
-            int origOffset = _outputTail;
-            ++_outputTail; // to leave room for type token
-            int byteLen = _shortUTF8Encode(text, offset, offset+len);
-            byte typeToken;
-            if (byteLen <= 255) { // yes, is short indeed
-                if (byteLen == len) { // and all ASCII
-                    typeToken = (byte) ((TOKEN_PREFIX_TINY_ASCII - 1) + byteLen);
-                } else { // not just ASCII
-                    typeToken = (byte) ((TOKEN_PREFIX_TINY_UNICODE - 2) + byteLen);
-                }
-            } else { // nope, longer non-ASCII Strings
-                typeToken = TOKEN_MISC_LONG_TEXT_UNICODE;
-                // and we will need String end marker byte
-                _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
+            // no, have to move. Blah.
+            System.arraycopy(buf, ix+1, buf, ix+2, actual);
+            buf[ix++] = BYTE_STRING_1BYTE_LEN;
+            buf[ix++] = (byte) actual;
+            _outputTail = ix+actual;
+            return;
+        }
+        if (len <= MAX_MEDIUM_STRING_CHARS) {
+            _ensureSpace(MAX_MEDIUM_STRING_BYTES); // short enough, can approximate
+            int actual = _encode(_outputTail+2, text, offset, len);
+            final byte[] buf = _outputBuffer;
+            int ix = _outputTail;
+            if (actual < MAX_MEDIUM_STRING_CHARS) { // fits as expected
+                buf[ix++] = BYTE_STRING_1BYTE_LEN;
+                buf[ix++] = (byte) actual;
+                _outputTail = ix + actual;
+                return;
             }
-            // and then sneak in type token now that know the details
-            _outputBuffer[origOffset] = typeToken;
-        } else { // "long" String, never shared
-            // but might still fit within buffer?
-            int maxLen = len + len + len + 2;
-            if (maxLen <= _outputBuffer.length) { // yes indeed
-                if ((_outputTail + maxLen) >= _outputEnd) {
-                    _flushBuffer();
-                }
-                int origOffset = _outputTail;
-                _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
-                int byteLen = _shortUTF8Encode(text, offset, offset+len);
-                // if it's ASCII, let's revise our type determination (to help decoder optimize)
-                if (byteLen == len) {
-                    _outputBuffer[origOffset] = TOKEN_BYTE_LONG_STRING_ASCII;
-                }
-                _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
-            } else {
-                _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
-                _mediumUTF8Encode(text, offset, offset+len);
-                _writeByte(BYTE_MARKER_END_OF_STRING);
-            }
+            // no, have to move. Blah.
+            System.arraycopy(buf, ix+2, buf, ix+3, actual);
+            buf[ix++] = BYTE_STRING_2BYTE_LEN;
+            buf[ix++] = (byte) (actual >> 8);
+            buf[ix++] = (byte) actual;
+            _outputTail = ix+actual;
+            return;
+        }
+        if (len <= MAX_LONG_STRING_CHARS) { // too long, has to be chunked
+            // otherwise, long but single chunk
+            _ensureSpace(MAX_LONG_STRING_BYTES); // calculate accurate length to avoid extra flushing
+            int ix = _outputTail;
+            int actual = _encode(_outputTail+3, text, offset, len);
+            final byte[] buf = _outputBuffer;
+            buf[ix++] = BYTE_STRING_2BYTE_LEN;
+            buf[ix++] = (byte) (actual >> 8);
+            buf[ix++] = (byte) actual;
+            _outputTail = ix+actual;
+            return;
+        }
+        _writeChunkedString(text, offset, len);
+    }
+
+    protected final void _writeChunkedString(char[] text, int offset, int len) throws IOException
+    {
+        // need to use a marker first
+        
+        while (len > MAX_LONG_STRING_CHARS) {
+            _ensureSpace(MAX_LONG_STRING_BYTES); // marker and single-byte length?
+            int ix = _outputTail;
+            int actual = _encode(_outputTail+3, text, offset, MAX_LONG_STRING_CHARS);
+            final byte[] buf = _outputBuffer;
+            buf[ix++] = BYTE_STRING_2BYTE_LEN;
+            buf[ix++] = (byte) (actual >> 8);
+            buf[ix++] = (byte) actual;
+            _outputTail = ix+actual;
+            offset += MAX_LONG_STRING_CHARS;
+            len -= MAX_LONG_STRING_CHARS;
+        }
+        // and for the last chunk, just use recursion
+        if (len > 0) {
+            _writeString(text, offset, len);
         }
     }
 
-    
     /*
     /**********************************************************
     /* Internal methods, UTF-8 encoding
     /**********************************************************
-    */
+     */
 
     /**
      * Helper method called when the whole character sequence is known to
      * fit in the output buffer regardless of UTF-8 expansion.
      */
-    private final int _shortUTF8Encode(char[] str, int i, int end)
+    private final int _encode(int outputPtr, char[] str, int i, int end)
     {
         // First: let's see if it's all ASCII: that's rather fast
-        int ptr = _outputTail;
         final byte[] outBuf = _outputBuffer;
+        final int outputStart = outputPtr;
         do {
             int c = str[i];
             if (c > 0x7F) {
-                return _shortUTF8Encode2(str, i, end, ptr);
+                return _shortUTF8Encode2(str, i, end, outputPtr, outputStart);
             }
-            outBuf[ptr++] = (byte) c;
+            outBuf[outputPtr++] = (byte) c;
         } while (++i < end);
-        int codedLen = ptr - _outputTail;
-        _outputTail = ptr;
-        return codedLen;
+        return outputPtr - outputStart;
     }
 
     /**
@@ -925,7 +971,8 @@ public class CBORGenerator extends GeneratorBase
      * fit in the output buffer, but not all characters are single-byte (ASCII)
      * characters.
      */
-    private final int _shortUTF8Encode2(char[] str, int i, int end, int outputPtr)
+    private final int _shortUTF8Encode2(char[] str, int i, int end,
+            int outputPtr, int outputStart)
     {
         final byte[] outBuf = _outputBuffer;
         while (i < end) {
@@ -965,149 +1012,65 @@ public class CBORGenerator extends GeneratorBase
             outBuf[outputPtr++] = (byte) (0x80 | ((c >> 6) & 0x3f));
             outBuf[outputPtr++] = (byte) (0x80 | (c & 0x3f));
         }
-        int codedLen = outputPtr - _outputTail;
-        _outputTail = outputPtr;
-        return codedLen;
-    }
-    
-    private void _slowUTF8Encode(String str) throws IOException
-    {
-        final int len = str.length();
-        int inputPtr = 0;
-        final int bufferEnd = _outputEnd - 4;
-        
-        output_loop:
-        for (; inputPtr < len; ) {
-            /* First, let's ensure we can output at least 4 bytes
-             * (longest UTF-8 encoded codepoint):
-             */
-            if (_outputTail >= bufferEnd) {
-                _flushBuffer();
-            }
-            int c = str.charAt(inputPtr++);
-            // And then see if we have an ASCII char:
-            if (c <= 0x7F) { // If so, can do a tight inner loop:
-                _outputBuffer[_outputTail++] = (byte)c;
-                // Let's calc how many ASCII chars we can copy at most:
-                int maxInCount = (len - inputPtr);
-                int maxOutCount = (bufferEnd - _outputTail);
-
-                if (maxInCount > maxOutCount) {
-                    maxInCount = maxOutCount;
-                }
-                maxInCount += inputPtr;
-                ascii_loop:
-                while (true) {
-                    if (inputPtr >= maxInCount) { // done with max. ascii seq
-                        continue output_loop;
-                    }
-                    c = str.charAt(inputPtr++);
-                    if (c > 0x7F) {
-                        break ascii_loop;
-                    }
-                    _outputBuffer[_outputTail++] = (byte) c;
-                }
-            }
-
-            // Nope, multi-byte:
-            if (c < 0x800) { // 2-byte
-                _outputBuffer[_outputTail++] = (byte) (0xc0 | (c >> 6));
-                _outputBuffer[_outputTail++] = (byte) (0x80 | (c & 0x3f));
-            } else { // 3 or 4 bytes
-                // Surrogates?
-                if (c < SURR1_FIRST || c > SURR2_LAST) {
-                    _outputBuffer[_outputTail++] = (byte) (0xe0 | (c >> 12));
-                    _outputBuffer[_outputTail++] = (byte) (0x80 | ((c >> 6) & 0x3f));
-                    _outputBuffer[_outputTail++] = (byte) (0x80 | (c & 0x3f));
-                    continue;
-                }
-                // Yup, a surrogate:
-                if (c > SURR1_LAST) { // must be from first range
-                    _throwIllegalSurrogate(c);
-                }
-                // and if so, followed by another from next range
-                if (inputPtr >= len) {
-                    _throwIllegalSurrogate(c);
-                }
-                c = _convertSurrogate(c, str.charAt(inputPtr++));
-                if (c > 0x10FFFF) { // illegal, as per RFC 4627
-                    _throwIllegalSurrogate(c);
-                }
-                _outputBuffer[_outputTail++] = (byte) (0xf0 | (c >> 18));
-                _outputBuffer[_outputTail++] = (byte) (0x80 | ((c >> 12) & 0x3f));
-                _outputBuffer[_outputTail++] = (byte) (0x80 | ((c >> 6) & 0x3f));
-                _outputBuffer[_outputTail++] = (byte) (0x80 | (c & 0x3f));
-            }
-        }
+        return (outputPtr - outputStart);
     }
 
-    private void _mediumUTF8Encode(char[] str, int inputPtr, int inputEnd) throws IOException
+    private final int _encode(int outputPtr, String str, int len)
     {
-        final int bufferEnd = _outputEnd - 4;
-        
-        output_loop:
-        while (inputPtr < inputEnd) {
-            /* First, let's ensure we can output at least 4 bytes
-             * (longest UTF-8 encoded codepoint):
-             */
-            if (_outputTail >= bufferEnd) {
-                _flushBuffer();
-            }
-            int c = str[inputPtr++];
-            // And then see if we have an ASCII char:
-            if (c <= 0x7F) { // If so, can do a tight inner loop:
-                _outputBuffer[_outputTail++] = (byte)c;
-                // Let's calc how many ASCII chars we can copy at most:
-                int maxInCount = (inputEnd - inputPtr);
-                int maxOutCount = (bufferEnd - _outputTail);
+        final byte[] outBuf = _outputBuffer;
+        int i = 0;
+        final int outputStart = outputPtr;
 
-                if (maxInCount > maxOutCount) {
-                    maxInCount = maxOutCount;
-                }
-                maxInCount += inputPtr;
-                ascii_loop:
-                while (true) {
-                    if (inputPtr >= maxInCount) { // done with max. ascii seq
-                        continue output_loop;
-                    }
-                    c = str[inputPtr++];
-                    if (c > 0x7F) {
-                        break ascii_loop;
-                    }
-                    _outputBuffer[_outputTail++] = (byte) c;
-                }
+        while (true) {
+            int c = str.charAt(i);
+            if (c > 0x7F) {
+                break;
             }
-
-            // Nope, multi-byte:
-            if (c < 0x800) { // 2-byte
-                _outputBuffer[_outputTail++] = (byte) (0xc0 | (c >> 6));
-                _outputBuffer[_outputTail++] = (byte) (0x80 | (c & 0x3f));
-            } else { // 3 or 4 bytes
-                // Surrogates?
-                if (c < SURR1_FIRST || c > SURR2_LAST) {
-                    _outputBuffer[_outputTail++] = (byte) (0xe0 | (c >> 12));
-                    _outputBuffer[_outputTail++] = (byte) (0x80 | ((c >> 6) & 0x3f));
-                    _outputBuffer[_outputTail++] = (byte) (0x80 | (c & 0x3f));
-                    continue;
-                }
-                // Yup, a surrogate:
-                if (c > SURR1_LAST) { // must be from first range
-                    _throwIllegalSurrogate(c);
-                }
-                // and if so, followed by another from next range
-                if (inputPtr >= inputEnd) {
-                    _throwIllegalSurrogate(c);
-                }
-                c = _convertSurrogate(c, str[inputPtr++]);
-                if (c > 0x10FFFF) { // illegal, as per RFC 4627
-                    _throwIllegalSurrogate(c);
-                }
-                _outputBuffer[_outputTail++] = (byte) (0xf0 | (c >> 18));
-                _outputBuffer[_outputTail++] = (byte) (0x80 | ((c >> 12) & 0x3f));
-                _outputBuffer[_outputTail++] = (byte) (0x80 | ((c >> 6) & 0x3f));
-                _outputBuffer[_outputTail++] = (byte) (0x80 | (c & 0x3f));
+            outBuf[outputPtr++] = (byte) c;
+            if (++i >= len) { // done!
+                return (outputPtr - outputStart);
             }
         }
+
+        // no; non-aSCII stuff, slower loop
+        while (i < len) {
+            int c = str.charAt(i++);
+            if (c <= 0x7F) {
+                outBuf[outputPtr++] = (byte) c;
+                continue;
+            }
+            // Nope, multi-byte:
+            if (c < 0x800) { // 2-byte
+                outBuf[outputPtr++] = (byte) (0xc0 | (c >> 6));
+                outBuf[outputPtr++] = (byte) (0x80 | (c & 0x3f));
+                continue;
+            }
+            // 3 or 4 bytes (surrogate)
+            // Surrogates?
+            if (c < SURR1_FIRST || c > SURR2_LAST) { // nope, regular 3-byte character
+                outBuf[outputPtr++] = (byte) (0xe0 | (c >> 12));
+                outBuf[outputPtr++] = (byte) (0x80 | ((c >> 6) & 0x3f));
+                outBuf[outputPtr++] = (byte) (0x80 | (c & 0x3f));
+                continue;
+            }
+            // Yup, a surrogate pair
+            if (c > SURR1_LAST) { // must be from first range; second won't do
+                _throwIllegalSurrogate(c);
+            }
+            // ... meaning it must have a pair
+            if (i >= len) {
+                _throwIllegalSurrogate(c);
+            }
+            c = _convertSurrogate(c, str.charAt(i++));
+            if (c > 0x10FFFF) { // illegal in JSON as well as in XML
+                _throwIllegalSurrogate(c);
+            }
+            outBuf[outputPtr++] = (byte) (0xf0 | (c >> 18));
+            outBuf[outputPtr++] = (byte) (0x80 | ((c >> 12) & 0x3f));
+            outBuf[outputPtr++] = (byte) (0x80 | ((c >> 6) & 0x3f));
+            outBuf[outputPtr++] = (byte) (0x80 | (c & 0x3f));
+        }
+        return (outputPtr - outputStart);
     }
     
     /**
