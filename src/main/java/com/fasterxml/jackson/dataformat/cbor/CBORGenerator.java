@@ -16,22 +16,33 @@ import static com.fasterxml.jackson.dataformat.cbor.CBORConstants.*;
  * 
  * @author Tatu Saloranta
  */
-public class CBORGenerator
-    extends GeneratorBase
+public class CBORGenerator extends GeneratorBase
 {
-    private final static int MAX_SHORT_VALUE_STRING_BYTES = 64;
-    private final static int MIN_BUFFER_FOR_POSSIBLE_SHORT_STRING = 1 + (3 * 65);
-
-    private final static int INT_MARKER_END_OF_STRING = 0xFC;
-    private final static byte BYTE_MARKER_END_OF_STRING = (byte) INT_MARKER_END_OF_STRING;
-
-    private final static byte TOKEN_LITERAL_EMPTY_STRING = 0x20;
+    private final static byte BYTE_MARKER_END_OF_STRING = (byte) 0xFC;
     
     private final static byte TOKEN_MISC_LONG_TEXT_ASCII = (byte) 0xE0;
     private final static byte TOKEN_MISC_LONG_TEXT_UNICODE = (byte) 0xE4;
 
     private final static int TOKEN_PREFIX_TINY_ASCII = 0x40;
     private final static int TOKEN_PREFIX_TINY_UNICODE = 0x80;
+
+    /**
+     * Let's ensure that we have big enough output buffer because of
+     * safety margins we need for UTF-8 encoding.
+     */
+    private final static int BYTE_BUFFER_FOR_OUTPUT = 16000;
+
+    /**
+     * Longest char chunk we will output is chosen so that it is guaranteed to fit
+     * in an empty buffer even if everything encoded in 3-byte sequences; but also
+     * fit two full chunks in case of single-byte (ascii) output.
+     */
+    private final static int MAX_CHUNK_CHARS = (BYTE_BUFFER_FOR_OUTPUT / 4) - 4;
+
+    /**
+     * This is the worst case length (in bytes) of maximum chunk we ever write.
+     */
+    private final static int MAX_CHUNK_LENGTH = (MAX_CHUNK_CHARS * 3) + 3;
     
     /**
      * Enumeration that defines all togglable features for Smile generators.
@@ -174,7 +185,7 @@ public class CBORGenerator
         _ioContext = ctxt;
         _out = out;
         _bufferRecyclable = true;
-        _outputBuffer = ctxt.allocWriteEncodingBuffer();
+        _outputBuffer = ctxt.allocWriteEncodingBuffer(BYTE_BUFFER_FOR_OUTPUT);
         _outputEnd = _outputBuffer.length;
         _charBuffer = ctxt.allocConcatBuffer();
         _charBufferLength = _charBuffer.length;
@@ -418,7 +429,7 @@ public class CBORGenerator
         byte[] raw = sstr.asUnquotedUTF8();
         final int len = raw.length;
         if (len == 0) {
-            _writeByte(TOKEN_LITERAL_EMPTY_STRING);
+            _writeByte(BYTE_EMPTY_STRING);
             return;
         }
         _writeInt32(PREFIX_TYPE_TEXT, len);
@@ -441,7 +452,7 @@ public class CBORGenerator
             return;
         }
         if (len == 0) {
-            _writeByte(TOKEN_LITERAL_EMPTY_STRING);
+            _writeByte(BYTE_EMPTY_STRING);
             return;
         }
         _writeInt32(PREFIX_TYPE_TEXT, len);
@@ -453,78 +464,6 @@ public class CBORGenerator
     {
         // Since no escaping is needed, same as 'writeRawUTF8String'
         writeRawUTF8String(text, offset, len);
-    }
-
-    /*
-    /**********************************************************
-    /* Low-level text output
-    /**********************************************************
-     */
-
-    protected final void _writeString(String name) throws IOException
-    {
-        int len = name.length();
-        if (len == 0) {
-            _writeByte(BYTE_EMPTY_STRING);
-            return;
-        }
-        char[] cbuf = _charBuffer;
-        if (len > cbuf.length) {
-            _charBuffer = cbuf = new char[Math.max(_charBuffer.length + 32, len)];
-        }
-        name.getChars(0, len, cbuf, 0);
-        _writeString(cbuf, 0, len);
-    }
-    
-    protected void _writeString(char[] text, int offset, int len) throws IOException
-    {
-        if (len == 0) { // empty String the same, regardless of char[] or byte[]
-            _writeByte(TOKEN_LITERAL_EMPTY_STRING);
-            return;
-        }
-        if (len <= MAX_SHORT_VALUE_STRING_BYTES) { // possibly short strings (not necessarily)
-            // first: ensure we have enough space
-            if ((_outputTail + MIN_BUFFER_FOR_POSSIBLE_SHORT_STRING) >= _outputEnd) {
-                _flushBuffer();
-            }
-            int origOffset = _outputTail;
-            ++_outputTail; // to leave room for type token
-            int byteLen = _shortUTF8Encode(text, offset, offset+len);
-            byte typeToken;
-            if (byteLen <= MAX_SHORT_VALUE_STRING_BYTES) { // yes, is short indeed
-                if (byteLen == len) { // and all ASCII
-                    typeToken = (byte) ((TOKEN_PREFIX_TINY_ASCII - 1) + byteLen);
-                } else { // not just ASCII
-                    typeToken = (byte) ((TOKEN_PREFIX_TINY_UNICODE - 2) + byteLen);
-                }
-            } else { // nope, longer non-ASCII Strings
-                typeToken = TOKEN_MISC_LONG_TEXT_UNICODE;
-                // and we will need String end marker byte
-                _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
-            }
-            // and then sneak in type token now that know the details
-            _outputBuffer[origOffset] = typeToken;
-        } else { // "long" String, never shared
-            // but might still fit within buffer?
-            int maxLen = len + len + len + 2;
-            if (maxLen <= _outputBuffer.length) { // yes indeed
-                if ((_outputTail + maxLen) >= _outputEnd) {
-                    _flushBuffer();
-                }
-                int origOffset = _outputTail;
-                _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
-                int byteLen = _shortUTF8Encode(text, offset, offset+len);
-                // if it's ASCII, let's revise our type determination (to help decoder optimize)
-                if (byteLen == len) {
-                    _outputBuffer[origOffset] = TOKEN_BYTE_LONG_STRING_ASCII;
-                }
-                _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
-            } else {
-                _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
-                _mediumUTF8Encode(text, offset, offset+len);
-                _writeByte(BYTE_MARKER_END_OF_STRING);
-            }
-        }
     }
 
     /*
@@ -885,6 +824,75 @@ public class CBORGenerator
     }
     
 
+    /*
+    /**********************************************************
+    /* Internal methods: low-level text output
+    /**********************************************************
+     */
+
+    protected final void _writeString(String name) throws IOException
+    {
+        int len = name.length();
+        if (len == 0) {
+            _writeByte(BYTE_EMPTY_STRING);
+            return;
+        }
+        char[] cbuf = _charBuffer;
+        if (len > cbuf.length) {
+            _charBuffer = cbuf = new char[Math.max(_charBuffer.length + 32, len)];
+        }
+        name.getChars(0, len, cbuf, 0);
+        _writeString(cbuf, 0, len);
+    }
+
+    protected void _writeString(char[] text, int offset, int len) throws IOException
+    {
+        if (len <= 23) { // possibly short strings (not necessarily)
+            // first: ensure we have enough space
+            if ((_outputTail + 23) >= _outputEnd) {
+                _flushBuffer();
+            }
+            int origOffset = _outputTail;
+            ++_outputTail; // to leave room for type token
+            int byteLen = _shortUTF8Encode(text, offset, offset+len);
+            byte typeToken;
+            if (byteLen <= 255) { // yes, is short indeed
+                if (byteLen == len) { // and all ASCII
+                    typeToken = (byte) ((TOKEN_PREFIX_TINY_ASCII - 1) + byteLen);
+                } else { // not just ASCII
+                    typeToken = (byte) ((TOKEN_PREFIX_TINY_UNICODE - 2) + byteLen);
+                }
+            } else { // nope, longer non-ASCII Strings
+                typeToken = TOKEN_MISC_LONG_TEXT_UNICODE;
+                // and we will need String end marker byte
+                _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
+            }
+            // and then sneak in type token now that know the details
+            _outputBuffer[origOffset] = typeToken;
+        } else { // "long" String, never shared
+            // but might still fit within buffer?
+            int maxLen = len + len + len + 2;
+            if (maxLen <= _outputBuffer.length) { // yes indeed
+                if ((_outputTail + maxLen) >= _outputEnd) {
+                    _flushBuffer();
+                }
+                int origOffset = _outputTail;
+                _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
+                int byteLen = _shortUTF8Encode(text, offset, offset+len);
+                // if it's ASCII, let's revise our type determination (to help decoder optimize)
+                if (byteLen == len) {
+                    _outputBuffer[origOffset] = TOKEN_BYTE_LONG_STRING_ASCII;
+                }
+                _outputBuffer[_outputTail++] = BYTE_MARKER_END_OF_STRING;
+            } else {
+                _writeByte(TOKEN_MISC_LONG_TEXT_UNICODE);
+                _mediumUTF8Encode(text, offset, offset+len);
+                _writeByte(BYTE_MARKER_END_OF_STRING);
+            }
+        }
+    }
+
+    
     /*
     /**********************************************************
     /* Internal methods, UTF-8 encoding
