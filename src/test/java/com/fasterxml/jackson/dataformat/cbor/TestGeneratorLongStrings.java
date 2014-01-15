@@ -21,7 +21,7 @@ public class TestGeneratorLongStrings extends CBORTestBase
         
         // Let's create 1M doc, first using Strings
         while (out.size() < (DOC_LEN - 10000)) {
-            String str = generateString(5000, rnd);
+            String str = generateUnicodeString(5000, rnd);
             strings.add(str);
             gen.writeString(str);
         }
@@ -50,31 +50,6 @@ public class TestGeneratorLongStrings extends CBORTestBase
     /* Helper methods
     /**********************************************************
      */
-
-    protected String generateString(int length, Random rnd) throws Exception
-    {
-        StringBuilder sw = new StringBuilder(length+10);
-        do {
-            // First, add 7 ascii characters
-            int num = 4 + (rnd.nextInt() & 7);
-            while (--num >= 0) {
-                sw.append((char) ('A' + num));
-            }
-            // Then a unicode char of 2, 3 or 4 bytes long
-            switch (rnd.nextInt() % 3) {
-            case 0:
-                sw.append((char) (256 + rnd.nextInt() & 511));
-                break;
-            case 1:
-                sw.append((char) (2048 + rnd.nextInt() & 4095));
-                break;
-            default:
-                sw.append((char) (65536 + rnd.nextInt() & 0x3FFF));
-                break;
-            }
-        } while (sw.length() < length);
-        return sw.toString();
-    }
 
     private void _verifyStrings(JsonFactory f, byte[] input, List<String> strings)
         throws IOException

@@ -1,6 +1,7 @@
 package com.fasterxml.jackson.dataformat.cbor;
 
 import java.io.*;
+import java.util.Random;
 
 public class TestGeneratorSimple extends CBORTestBase
 {
@@ -52,19 +53,9 @@ public class TestGeneratorSimple extends CBORTestBase
                CBORConstants.BYTE_BREAK);
     }
     
-    public void testShortAscii() throws Exception
+    public void testIntValues() throws Exception
     {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        CBORGenerator gen = cborGenerator(out);
-        gen.writeString("abc");
-        gen.close();
-        _verifyBytes(out.toByteArray(),
-                (byte) (CBORConstants.PREFIX_TYPE_TEXT + 3),
-                (byte) 'a', (byte) 'b', (byte) 'c');
-    }
-
-    public void testSmallInt() throws Exception
-    {
+        // first, single-byte
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         CBORGenerator gen = cborGenerator(out);
         gen.writeNumber(13);
@@ -79,5 +70,52 @@ public class TestGeneratorSimple extends CBORTestBase
         _verifyBytes(out.toByteArray(),
                 // note: since there is no "-0", number one less than it'd appear
                 (byte) (CBORConstants.PREFIX_TYPE_INT_NEG + 12));
+
+        // then two byte
+        out = new ByteArrayOutputStream();
+        gen = cborGenerator(out);
+        gen.writeNumber(0xFF);
+        gen.close();
+        _verifyBytes(out.toByteArray(),
+                (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 24), (byte) 0xFF);
+
+        out = new ByteArrayOutputStream();
+        gen = cborGenerator(out);
+        gen.writeNumber(-256);
+        gen.close();
+        _verifyBytes(out.toByteArray(),
+                // note: since there is no "-0", number one less than it'd appear
+                (byte) (CBORConstants.PREFIX_TYPE_INT_NEG + 24), (byte) 0xFF);
+
+        // and three byte
+        out = new ByteArrayOutputStream();
+        gen = cborGenerator(out);
+        gen.writeNumber(0xFEDC);
+        gen.close();
+        _verifyBytes(out.toByteArray(),
+                (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 25), (byte) 0xFE, (byte) 0xDC);
+
+        out = new ByteArrayOutputStream();
+        gen = cborGenerator(out);
+        gen.writeNumber(-0xFFFE);
+        gen.close();
+        _verifyBytes(out.toByteArray(),
+                (byte) (CBORConstants.PREFIX_TYPE_INT_NEG + 25), (byte) 0xFF, (byte) 0xFD);
     }
+
+    public void testLongerText() throws Exception
+    {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        CBORGenerator gen = cborGenerator(out);
+
+        final String SHORT_ASCII = generateAsciiString(240);
+        
+        gen.writeString(SHORT_ASCII);
+        gen.close();
+        byte[] b = SHORT_ASCII.getBytes("UTF-8");
+        final int len = b.length;
+        _verifyBytes(out.toByteArray(),
+                (byte) (CBORConstants.PREFIX_TYPE_TEXT + 24), (byte) len, b);
+    }
+
 }
