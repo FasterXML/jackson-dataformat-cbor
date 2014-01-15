@@ -683,7 +683,7 @@ public class CBORGenerator extends GeneratorBase
          * be changed
          */
         int i = Float.floatToRawIntBits(f);
-        _outputBuffer[_outputTail++] = BYTE_FLOAT64;
+        _outputBuffer[_outputTail++] = BYTE_FLOAT32;
         _outputBuffer[_outputTail++] = (byte) (i >> 24);
         _outputBuffer[_outputTail++] = (byte) (i >> 16);
         _outputBuffer[_outputTail++] = (byte) (i >> 8);
@@ -921,6 +921,7 @@ public class CBORGenerator extends GeneratorBase
     protected final void _writeChunkedString(char[] text, int offset, int len) throws IOException
     {
         // need to use a marker first
+        _writeByte(BYTE_STRING_INDEFINITE);
         
         while (len > MAX_LONG_STRING_CHARS) {
             _ensureSpace(MAX_LONG_STRING_BYTES); // marker and single-byte length?
@@ -938,6 +939,8 @@ public class CBORGenerator extends GeneratorBase
         if (len > 0) {
             _writeString(text, offset, len);
         }
+        // plus end marker
+        _writeByte(BYTE_BREAK);
     }
 
     /*
