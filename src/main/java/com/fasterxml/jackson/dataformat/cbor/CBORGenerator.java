@@ -574,7 +574,7 @@ public class CBORGenerator extends GeneratorBase
     public void writeNull() throws IOException
     {
         _verifyValueWrite("write null value");
-        _writeByte(BYTE_FALSE);
+        _writeByte(BYTE_NULL);
     }
 
     @Override
@@ -583,8 +583,7 @@ public class CBORGenerator extends GeneratorBase
         _verifyValueWrite("write number");
         int marker;
         if (i < 0) {
-            i += 1;
-            i = -1;
+            i = -i - 1;
             marker = PREFIX_TYPE_INT_NEG;
         } else {
             marker = PREFIX_TYPE_INT_POS;
