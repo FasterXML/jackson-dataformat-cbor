@@ -174,6 +174,20 @@ public class CBORParser extends ParserMinimalBase
     protected final TextBuffer _textBuffer;
 
     /**
+     * Temporary buffer that is needed if field name is accessed
+     * using {@link #getTextCharacters} method (instead of String
+     * returning alternatives)
+     */
+    protected char[] _nameCopyBuffer = null;
+
+    /**
+     * Flag set to indicate whether the field name is available
+     * from the name copy buffer or not (in addition to its String
+     * representation  being available via read context)
+     */
+    protected boolean _nameCopied = false;
+    
+    /**
      * ByteArrayBuilder is needed if 'getBinaryValue' is called. If so,
      * we better reuse it for remainder of content.
      */
@@ -369,22 +383,6 @@ public class CBORParser extends ParserMinimalBase
         _objectCodec = c;
     }
 
-    /**
-     * Helper method called when it looks like input might contain the signature;
-     * and it is necessary to detect and handle signature to get configuration
-     * information it might have.
-     * 
-     * @return True if valid signature was found and handled; false if not
-     */
-    protected boolean handleSignature(boolean consumeFirstByte, boolean throwException)
-        throws IOException, JsonParseException
-    {
-        if (consumeFirstByte) {
-            ++_inputPtr;
-        }
-        return true;
-    }
-
     /*                                                                                       
     /**********************************************************                              
     /* Versioned                                                                             
@@ -469,9 +467,7 @@ public class CBORParser extends ParserMinimalBase
         if (_currToken == JsonToken.START_OBJECT || _currToken == JsonToken.START_ARRAY) {
             ctxt = ctxt.getParent();
         }
-        /* 24-Sep-2013, tatu: Unfortunate, but since we did not expose exceptions,
-         *   need to wrap this here
-         */
+        // Unfortunate, but since we did not expose exceptions, need to wrap
         try {
             ctxt.setCurrentName(name);
         } catch (IOException e) {
@@ -511,7 +507,6 @@ public class CBORParser extends ParserMinimalBase
     protected final boolean loadMore() throws IOException
     {
         _currInputProcessed += _inputEnd;
-        //_currInputRowStart -= _inputEnd;
         
         if (_inputStream != null) {
             int count = _inputStream.read(_inputBuffer, 0, _inputBuffer.length);
@@ -537,8 +532,6 @@ public class CBORParser extends ParserMinimalBase
     /**
      * Helper method that will try to load at least specified number bytes in
      * input buffer, possible moving existing data around if necessary
-     * 
-     * @since 1.6
      */
     protected final boolean _loadToHaveAtLeast(int minAvailable)
         throws IOException
@@ -603,12 +596,10 @@ public class CBORParser extends ParserMinimalBase
             // yes; is or can be made available efficiently as char[]
             return _textBuffer.hasTextAsCharacters();
         }
-        /*
         if (_currToken == JsonToken.FIELD_NAME) {
             // not necessarily; possible but:
             return _nameCopied;
         }
-        */
         // other types, no benefit from accessing as char[]
         return false;
     }
@@ -627,6 +618,12 @@ public class CBORParser extends ParserMinimalBase
                  _inputBuffer = null;
                  _ioContext.releaseReadIOBuffer(buf);
              }
+         }
+         _textBuffer.releaseBuffers();
+         char[] buf = _nameCopyBuffer;
+         if (buf != null) {
+             _nameCopyBuffer = null;
+             _ioContext.releaseNameCopyBuffer(buf);
          }
     }
 
@@ -666,12 +663,171 @@ public class CBORParser extends ParserMinimalBase
         }
         int ch = _inputBuffer[_inputPtr++];
         _typeByte = ch;
+        final int lowBits = ch & 0x1F;
+        switch ((ch >> 5) & 0x7) {
+        case 0: // positive int
+            if (lowBits <= 23) {
+                _numberInt = lowBits;
+                _numTypesValid = NR_INT;
+            } else {
+                _numTypesValid = NR_INT;
+                switch (lowBits - 24) {
+                case 0:
+                    _numberInt = _decode8Bits();
+                    break;
+                case 1:
+                    _numberInt = _decode16Bits();
+                    break;
+                case 2:
+                    _numberInt = _decode32Bits();
+                    break;
+                case 3:
+                    _numberLong = _decode64Bits();
+                    _numTypesValid = NR_LONG;
+                    break;
+                default:
+                    _invalidToken(ch);
+                }
+            }
+            return (_currToken = JsonToken.VALUE_NUMBER_INT);
+        case 1: // negative int
+            if (lowBits <= 23) {
+                _numberInt = -lowBits - 1;
+                _numTypesValid = NR_INT;
+            } else {
+                _numTypesValid = NR_INT;
+                switch (lowBits - 24) {
+                case 0:
+                    _numberInt = -_decode8Bits() - 1;
+                    break;
+                case 1:
+                    _numberInt = -_decode16Bits() - 1;
+                    break;
+                case 2:
+                    _numberInt = -_decode32Bits() - 1;
+                    break;
+                case 3:
+                    _numberLong = -_decode64Bits() - 1L;
+                    _numTypesValid = NR_LONG;
+                    break;
+                default:
+                    _invalidToken(ch);
+                }
+            }
+            return (_currToken = JsonToken.VALUE_NUMBER_INT);
+        case 2: // byte[]
+        case 3: // String
+        case 4: // Array
+        case 5: // Object
+        case 6: // tag
+        default: // misc: tokens, floats
+            if (lowBits == 20) {
+                return (_currToken = JsonToken.VALUE_FALSE);
+            }
+            if (lowBits == 21) {
+                return (_currToken = JsonToken.VALUE_TRUE);
+            }
+            if (lowBits == 22) {
+                return (_currToken = JsonToken.VALUE_NULL);
+            }
+            _invalidToken(ch);
+        }
         return null;
     }
 
+    private final int _decode8Bits() throws IOException {
+        if (_inputPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+        }
+        return _inputBuffer[_inputPtr++] & 0xFF;
+    }
+
+    private final int _decode16Bits() throws IOException {
+        int ptr = _inputPtr;
+        if ((ptr + 1) >= _inputEnd) {
+            return _slow16();
+        }
+        final byte[] b = _inputBuffer;
+        int v = (b[ptr] & 0xFF) + (b[ptr+1] & 0xFF);
+        _inputPtr = ptr+2;
+        return v;
+    }
+
+    private final int _slow16() throws IOException {
+        if (_inputPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+        }
+        int v = (_inputBuffer[_inputPtr++] & 0xFF);
+        if (_inputPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+        }
+        return (v << 8) + (_inputBuffer[_inputPtr++] & 0xFF);
+    }
+    
+    private final int _decode32Bits() throws IOException {
+        int ptr = _inputPtr;
+        if ((ptr + 3) >= _inputEnd) {
+            return _slow32();
+        }
+        final byte[] b = _inputBuffer;
+        int v = (b[ptr++] << 24) + ((b[ptr++] & 0xFF) << 16)
+                + ((b[ptr++] & 0xFF) << 8) + (b[ptr++] & 0xFF);
+        _inputPtr = ptr;
+        return v;
+    }
+
+    private final int _slow32() throws IOException {
+        if (_inputPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+        }
+        int v = _inputBuffer[_inputPtr++]; // sign will disappear anyway
+        if (_inputPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+        }
+        v = (v << 8) + (_inputBuffer[_inputPtr++] & 0xFF);
+        if (_inputPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+        }
+        v = (v << 8) + (_inputBuffer[_inputPtr++] & 0xFF);
+        if (_inputPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+        }
+        return (v << 8) + (_inputBuffer[_inputPtr++] & 0xFF);
+    }
+    
+    private final long _decode64Bits() throws IOException {
+        int ptr = _inputPtr;
+        if ((ptr + 7) >= _inputEnd) {
+            return _slow64();
+        }
+        final byte[] b = _inputBuffer;
+        int i1 = (b[ptr++] << 24) + ((b[ptr++] & 0xFF) << 16)
+                + ((b[ptr++] & 0xFF) << 8) + (b[ptr++] & 0xFF);
+        int i2 = (b[ptr++] << 24) + ((b[ptr++] & 0xFF) << 16)
+                + ((b[ptr++] & 0xFF) << 8) + (b[ptr++] & 0xFF);
+        _inputPtr = ptr;
+        return _long(i1, i2);
+    }
+
+    private final long _slow64() throws IOException {
+        return _long(_decode32Bits(), _decode32Bits());
+    }
+    
+    private final static long _long(int i1, int i2)
+    {
+        long l1 = i1;
+        long l2 = i2;
+        l2 = (l2 << 32) >>> 32;
+        return (l1 << 32) + l2;
+    }
+    
     // base impl is fine:
     //public String getCurrentName() throws IOException, JsonParseException
 
+    protected void _invalidToken(int ch) throws JsonParseException {
+        throw _constructError("Invalid CBOR value token (first byte): 0x"+Integer.toHexString(ch & 0xFF));
+    }
+    
     /*
     /**********************************************************
     /* Public API, traversal, nextXxxValue/nextFieldName
@@ -822,8 +978,7 @@ public class CBORParser extends ParserMinimalBase
     }
 
     @Override
-    public int getTextOffset() throws IOException
-    {
+    public int getTextOffset() throws IOException {
         return 0;
     }
 
@@ -1216,12 +1371,6 @@ public class CBORParser extends ParserMinimalBase
     {
         _tokenIncomplete = false;
         // sanity check
-    	_throwInternal();
-    }
-
-    protected final void _finishNumberToken(int tb) throws IOException
-    {
-        tb &= 0x1F;
         _throwInternal();
     }
 
@@ -1233,15 +1382,15 @@ public class CBORParser extends ParserMinimalBase
 
     /**
      * Method called to skip remainders of an incomplete token, when
-     * contents themselves will not be needed any more
+     * contents themselves will not be needed any more.
+     * Only called or byte array and text.
      */
-    protected void _skipIncomplete() throws IOException, JsonParseException
+    protected void _skipIncomplete() throws IOException
     {
         _tokenIncomplete = false;
     }
 
-    protected void _skipBytes(int len)
-        throws IOException, JsonParseException
+    protected void _skipBytes(int len) throws IOException
     {
         while (true) {
             int toAdd = Math.min(len, _inputEnd - _inputPtr);
