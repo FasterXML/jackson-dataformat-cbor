@@ -14,7 +14,7 @@ import com.fasterxml.jackson.core.sym.BytesToNameCanonicalizer;
 import com.fasterxml.jackson.core.util.ByteArrayBuilder;
 import com.fasterxml.jackson.core.util.TextBuffer;
 
-public class CBORParser extends ParserMinimalBase
+public final class CBORParser extends ParserMinimalBase
 {
     /**
      * Enumeration that defines all togglable features for CBOR generators.
@@ -166,7 +166,7 @@ public class CBORParser extends ParserMinimalBase
      * Information about parser context, context in which
      * the next token is to be parsed (root, array, object).
      */
-    protected JsonReadContext _parsingContext;
+    protected CBORReadContext _parsingContext;
     /**
      * Buffer that contains contents of String values, including
      * field names if necessary (name split across boundary,
@@ -376,7 +376,7 @@ public class CBORParser extends ParserMinimalBase
         _textBuffer = ctxt.constructTextBuffer();
         DupDetector dups = JsonParser.Feature.STRICT_DUPLICATE_DETECTION.enabledIn(parserFeatures)
                 ? DupDetector.rootDetector(this) : null;
-        _parsingContext = JsonReadContext.createRootContext(dups);
+        _parsingContext = CBORReadContext.createRootContext(dups);
 
         _tokenInputRow = -1;
         _tokenInputCol = -1;
@@ -462,7 +462,7 @@ public class CBORParser extends ParserMinimalBase
     {
         // [JACKSON-395]: start markers require information from parent
         if (_currToken == JsonToken.START_OBJECT || _currToken == JsonToken.START_ARRAY) {
-            JsonReadContext parent = _parsingContext.getParent();
+            CBORReadContext parent = _parsingContext.getParent();
             return parent.getCurrentName();
         }
         return _parsingContext.getCurrentName();
@@ -472,7 +472,7 @@ public class CBORParser extends ParserMinimalBase
     public void overrideCurrentName(String name)
     {
         // Simple, but need to look for START_OBJECT/ARRAY's "off-by-one" thing:
-        JsonReadContext ctxt = _parsingContext;
+        CBORReadContext ctxt = _parsingContext;
         if (_currToken == JsonToken.START_OBJECT || _currToken == JsonToken.START_ARRAY) {
             ctxt = ctxt.getParent();
         }
@@ -503,7 +503,7 @@ public class CBORParser extends ParserMinimalBase
     public boolean isClosed() { return _closed; }
 
     @Override
-    public JsonReadContext getParsingContext() {
+    public CBORReadContext getParsingContext() {
         return _parsingContext;
     }
     
@@ -654,10 +654,26 @@ public class CBORParser extends ParserMinimalBase
         _tokenInputTotal = _currInputProcessed + _inputPtr;
         // also: clear any data retained so far
         _binaryValue = null;
-        // Two main modes: values, and field names.
-        if (_parsingContext.inObject() && _currToken != JsonToken.FIELD_NAME) {
-            _handleFieldName();
-            return (_currToken = JsonToken.FIELD_NAME);
+
+        /* First: need to keep track of lengths of defined-length Arrays and
+         * Objects (to materialize END_ARRAY/END_OBJECT as necessary);
+         * as well as handle names for Object entries.
+         */
+        if (_parsingContext.inObject()) {
+            if (_currToken != JsonToken.FIELD_NAME) {
+                // completed the whole Object?
+                if (!_parsingContext.expectMoreValues()) {
+                    _parsingContext = _parsingContext.getParent();
+                    return (_currToken = JsonToken.END_OBJECT);
+                }
+                _handleFieldName();
+                return (_currToken = JsonToken.FIELD_NAME);
+            }
+        } else {
+            if (!_parsingContext.expectMoreValues()) {
+                _parsingContext = _parsingContext.getParent();
+                return (_currToken = JsonToken.END_ARRAY);
+            }
         }
         if (_inputPtr >= _inputEnd) {
             if (!loadMore()) {
@@ -722,10 +738,31 @@ public class CBORParser extends ParserMinimalBase
                 }
             }
             return (_currToken = JsonToken.VALUE_NUMBER_INT);
+
         case 2: // byte[]
+            // !!! TODO
+            break;
+
         case 3: // String
+            // !!! TODO
+            // !!! TODO
+
         case 4: // Array
+            _currToken = JsonToken.START_ARRAY;
+            {
+                int len = _decodeExpLength(lowBits);
+                _parsingContext = _parsingContext.createChildArrayContext(len);
+            }
+            return _currToken;
+
         case 5: // Object
+            _currToken = JsonToken.START_OBJECT;
+            {
+                int len = _decodeExpLength(lowBits);
+                _parsingContext = _parsingContext.createChildObjectContext(len);
+            }
+            return _currToken;
+
         case 6: // tag
             _tagValue = Integer.valueOf(_decodeTag(lowBits));
             return nextToken();
@@ -752,12 +789,28 @@ public class CBORParser extends ParserMinimalBase
                 _numberDouble = Double.longBitsToDouble(_decode64Bits());
                 _numTypesValid = NR_DOUBLE;
                 return (_currToken = JsonToken.VALUE_NUMBER_FLOAT);
+            case 31: // Break
+                
+                if (_parsingContext.inObject()) {
+                    if (!_parsingContext.hasExpectedLength()) {
+                        _parsingContext = _parsingContext.getParent();
+                        return (_currToken = JsonToken.END_ARRAY);
+                    }
+                } else if (_parsingContext.inObject()) {
+                    if (!_parsingContext.hasExpectedLength()) {
+                        _parsingContext = _parsingContext.getParent();
+                        return (_currToken = JsonToken.END_OBJECT);
+                    }
+                }
+                _reportUnexpectedBreak();
+                // no Break markers in root?
+                throw _constructError("Unexpected Break (0xFF) token in root context");
             }
             _invalidToken(ch);
         }
         return null;
     }
-
+    
     /**
      * Method that handles initial token type recognition for token
      * that has to be either FIELD_NAME or END_OBJECT.
@@ -823,6 +876,37 @@ public class CBORParser extends ParserMinimalBase
             i = -i - 1;
         }
         return String.valueOf(1);
+    }
+
+    
+    private final int _decodeExpLength(int lowBits) throws IOException
+    {
+        // common case, indefinite length; relies on marker
+        if (lowBits == 31) {
+            return -1;
+        }
+        if (lowBits <= 23) {
+            return lowBits;
+        }
+        switch (lowBits - 24) {
+        case 0:
+            return _decode8Bits();
+        case 1:
+            return _decode16Bits();
+        case 2:
+            return _decode32Bits();
+        case 3:
+            long l = _decode64Bits();
+            if (l < 0) {
+                throw _constructError("Illegal length for "+_currToken+": "+l);
+            }
+            // how about really big? Most likely an encoding error, so:
+            if (l > MAX_INT_L) {
+                throw _constructError("Illegal length for "+_currToken+": "+l);
+            }
+            return (int) l;
+        }
+        throw _constructError("Invalid length for "+_currToken+": 0x"+Integer.toHexString(lowBits));
     }
 
     private final int _decodeTag(int lowBits) throws IOException
@@ -1560,8 +1644,9 @@ public class CBORParser extends ParserMinimalBase
             
             
         case 4: // Array
-        case 5: // Object
+            // !!! TODO
             
+        case 5: // Object
             // !!! TODO
             
         case 6: // tag
@@ -1760,8 +1845,16 @@ public class CBORParser extends ParserMinimalBase
     /**********************************************************
      */
 
-    protected void _reportInvalidChar(int c) throws JsonParseException
-    {
+    protected void _reportUnexpectedBreak() throws IOException {
+        if (_parsingContext.inRoot()) {
+            throw _constructError("Unexpected Break (0xFF) token in Root context");
+        }
+        throw _constructError("Unexpected Break (0xFF) token in definite length ("
+                +_parsingContext.getExpectedLength()+") "
+                +(_parsingContext.inObject() ? "Object" : "Array" ));
+    }
+    
+    protected void _reportInvalidChar(int c) throws JsonParseException {
         // Either invalid WS or illegal UTF-8 start char
         if (c < ' ') {
             _throwInvalidSpace(c);
