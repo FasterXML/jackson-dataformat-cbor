@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.base.ParserMinimalBase;
 import com.fasterxml.jackson.core.io.IOContext;
 import com.fasterxml.jackson.core.io.NumberInput;
+import com.fasterxml.jackson.core.json.DupDetector;
 import com.fasterxml.jackson.core.json.JsonReadContext;
 import com.fasterxml.jackson.core.sym.BytesToNameCanonicalizer;
 import com.fasterxml.jackson.core.util.ByteArrayBuilder;
@@ -201,6 +202,11 @@ public class CBORParser extends ParserMinimalBase
      */
     protected byte[] _binaryValue;
 
+    /**
+     * We will keep track of tag value for possible future use.
+     */
+    protected int _tagValue = -1;
+    
     /*
     /**********************************************************
     /* Input source config, state (from ex StreamBasedParserBase)
@@ -351,13 +357,13 @@ public class CBORParser extends ParserMinimalBase
     /**********************************************************
      */
     
-    public CBORParser(IOContext ctxt, int parserFeatures, int smileFeatures,
+    public CBORParser(IOContext ctxt, int parserFeatures, int cborFeatures,
             ObjectCodec codec,
             BytesToNameCanonicalizer sym,
             InputStream in, byte[] inputBuffer, int start, int end,
             boolean bufferRecyclable)
     {
-        super();
+        super(parserFeatures);
         _ioContext = ctxt;
         _objectCodec = codec;
         _symbols = sym;
@@ -368,6 +374,9 @@ public class CBORParser extends ParserMinimalBase
         _inputEnd = end;
         _bufferRecyclable = bufferRecyclable;
         _textBuffer = ctxt.constructTextBuffer();
+        DupDetector dups = JsonParser.Feature.STRICT_DUPLICATE_DETECTION.enabledIn(parserFeatures)
+                ? DupDetector.rootDetector(this) : null;
+        _parsingContext = JsonReadContext.createRootContext(dups);
 
         _tokenInputRow = -1;
         _tokenInputCol = -1;
@@ -637,6 +646,7 @@ public class CBORParser extends ParserMinimalBase
     public JsonToken nextToken() throws IOException, JsonParseException
     {
         _numTypesValid = NR_UNKNOWN;
+        _tagValue = -1;
         // For longer tokens (text, binary), we'll only read when requested
         if (_tokenIncomplete) {
             _skipIncomplete();
@@ -646,9 +656,7 @@ public class CBORParser extends ParserMinimalBase
         _binaryValue = null;
         // Two main modes: values, and field names.
         if (_parsingContext.inObject() && _currToken != JsonToken.FIELD_NAME) {
-            // !!! TODO
-//            return (_currToken = _handleFieldName());
-            return null;
+            return (_currToken = _handleFieldName());
         }
         if (_inputPtr >= _inputEnd) {
             if (!loadMore()) {
@@ -666,11 +674,10 @@ public class CBORParser extends ParserMinimalBase
         final int lowBits = ch & 0x1F;
         switch ((ch >> 5) & 0x7) {
         case 0: // positive int
+            _numTypesValid = NR_INT;
             if (lowBits <= 23) {
                 _numberInt = lowBits;
-                _numTypesValid = NR_INT;
             } else {
-                _numTypesValid = NR_INT;
                 switch (lowBits - 24) {
                 case 0:
                     _numberInt = _decode8Bits();
@@ -691,11 +698,10 @@ public class CBORParser extends ParserMinimalBase
             }
             return (_currToken = JsonToken.VALUE_NUMBER_INT);
         case 1: // negative int
+            _numTypesValid = NR_INT;
             if (lowBits <= 23) {
                 _numberInt = -lowBits - 1;
-                _numTypesValid = NR_INT;
             } else {
-                _numTypesValid = NR_INT;
                 switch (lowBits - 24) {
                 case 0:
                     _numberInt = -_decode8Bits() - 1;
@@ -720,21 +726,109 @@ public class CBORParser extends ParserMinimalBase
         case 4: // Array
         case 5: // Object
         case 6: // tag
+            /* 16-Jan-2014, tatu: TODO -- support some of the tags in future;
+             *   for now, not much benefit so just skip.
+             */
+            _tagValue = Integer.valueOf(_decodeTag(lowBits));
+            return nextToken();
+            
         default: // misc: tokens, floats
-            if (lowBits == 20) {
+            switch (lowBits) {
+            case 20:
                 return (_currToken = JsonToken.VALUE_FALSE);
-            }
-            if (lowBits == 21) {
+            case 21:
                 return (_currToken = JsonToken.VALUE_TRUE);
-            }
-            if (lowBits == 22) {
+            case 22:
                 return (_currToken = JsonToken.VALUE_NULL);
+            case 25: // 16-bit float... 
+                // !!! TODO: support?
+                break;
+            case 26: // Float32
+                {
+                    float f = Float.intBitsToFloat(_decode32Bits());
+                    _numberDouble = (double) f;
+                    _numTypesValid = NR_DOUBLE;
+                }
+                return (_currToken = JsonToken.VALUE_NUMBER_FLOAT);
+            case 27: // Float64
+                _numberDouble = Double.longBitsToDouble(_decode64Bits());
+                _numTypesValid = NR_DOUBLE;
+                return (_currToken = JsonToken.VALUE_NUMBER_FLOAT);
             }
             _invalidToken(ch);
         }
         return null;
     }
 
+    /**
+     * Method that handles initial token type recognition for token
+     * that has to be either FIELD_NAME or END_OBJECT.
+     */
+    protected final JsonToken _handleFieldName() throws IOException
+    {     
+        if (_inputPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+        }
+        int ch = _inputBuffer[_inputPtr++];
+
+        _reportError("Internal");
+        return null;
+    }
+
+    protected final boolean _skipStd(int lowBits) throws IOException
+    {
+        int ptr = _inputPtr;
+        final int end = _inputEnd;
+        switch (lowBits) {
+        case 24:
+            ++ptr;
+            break;
+        case 25:
+            ptr += 2;
+            break;
+        case 26:
+            ptr += 2;
+            break;
+        case 27:
+            ptr += 8;
+            break;
+        default:
+            return false;
+        }
+        if (ptr >= end) { // offline rare case of split boundary
+            _skipBytes(ptr - _inputPtr);
+            return false;
+        }
+        _inputPtr = ptr;
+        return true;
+    }
+
+    private final int _decodeTag(int lowBits) throws IOException
+    {
+        if (lowBits <= 23) {
+            return lowBits;
+        }
+        switch (lowBits - 24) {
+        case 0:
+            return _decode8Bits();
+        case 1:
+            return _decode16Bits();
+        case 2:
+            return _decode32Bits();
+        case 3:
+            /* 16-Jan-2014, tatu: Technically legal, but nothing defined, so let's
+             *   only allow for cases where encoder is being wasteful...
+             */
+            long l = _decode64Bits();
+            if (l < MIN_INT_L || l > MAX_INT_L) {
+                _reportError("Illegal Tag value: "+l);
+            }
+            return (int) l;
+        }
+        _reportError("Invalid low bits for Tag token: 0x"+Integer.toHexString(lowBits));
+        return 0; // never gets here
+    }
+    
     private final int _decode8Bits() throws IOException {
         if (_inputPtr >= _inputEnd) {
             loadMoreGuaranteed();
@@ -748,7 +842,7 @@ public class CBORParser extends ParserMinimalBase
             return _slow16();
         }
         final byte[] b = _inputBuffer;
-        int v = (b[ptr] & 0xFF) + (b[ptr+1] & 0xFF);
+        int v = ((b[ptr] & 0xFF) << 8) + (b[ptr+1] & 0xFF);
         _inputPtr = ptr+2;
         return v;
     }
@@ -825,7 +919,14 @@ public class CBORParser extends ParserMinimalBase
     //public String getCurrentName() throws IOException, JsonParseException
 
     protected void _invalidToken(int ch) throws JsonParseException {
-        throw _constructError("Invalid CBOR value token (first byte): 0x"+Integer.toHexString(ch & 0xFF));
+        ch &= 0xFF;
+        if (ch == (CBORConstants.BYTE_FLOAT16 & 0xFF)) {
+            throw _constructError("16-bit floating point values (type 0x"+Integer.toHexString(ch)+") not yet supported");
+        }
+        if (ch == 0xFF) {
+            throw _constructError("Mismatched BREAK byte (0xFF): encountered where value expected");
+        }
+        throw _constructError("Invalid CBOR value token (first byte): 0x"+Integer.toHexString(ch));
     }
     
     /*
@@ -1385,9 +1486,110 @@ public class CBORParser extends ParserMinimalBase
      * contents themselves will not be needed any more.
      * Only called or byte array and text.
      */
-    protected void _skipIncomplete() throws IOException
-    {
+    protected void _skipIncomplete() throws IOException {
         _tokenIncomplete = false;
+    }
+
+    protected void _skipValue() throws IOException
+    {
+        if (_inputPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+        }
+        int ch = _inputBuffer[_inputPtr++];
+        final int lowBits = ch & 0x1F;
+        
+        main:
+        switch ((ch >> 5) & 0x7) {
+        case 0:
+        case 1:
+            if (lowBits <= 23) { // small ints fit in type token
+                return;
+            }
+            if (_skipStd(lowBits)) {
+                return;
+            }
+            break;
+        case 2: // byte[]
+        case 3: // String
+            // Not very different, figure out length
+            {
+                int toSkip;
+
+                if (lowBits <= 23) {
+                    toSkip = lowBits;
+                } else if (lowBits == 31) {
+                    _skipChunked();
+                    return;
+                } else {
+                    switch (lowBits - 24) {
+                    case 0:
+                        toSkip = _decode8Bits();
+                        break;
+                    case 1:
+                        toSkip = _decode16Bits();
+                        break;
+                    case 2:
+                        toSkip = _decode32Bits();
+                        break;
+                    case 3: // seriously?
+                        _skipBytesL(_decode64Bits());
+                        return;
+                    default:
+                        break main;
+                    }
+                }
+                _skipBytes(toSkip);
+            }
+            
+            
+        case 4: // Array
+        case 5: // Object
+        case 6: // tag
+            /* 16-Jan-2014, tatu: Not 100% if this is allowed or not; would make sense
+             *    to allow multiple tags via nesting. For now consider a well-formedness failure.
+             */
+            throw _constructError("Illegal nested marker tag");
+        case 7: // mics, floats
+            switch (lowBits) {
+            case 20:
+            case 21:
+            case 22: // single-byte tokens;
+                return;
+            }
+            if (_skipStd(lowBits)) {
+                return;
+            }
+            break;
+        default: // misc: tokens, floats
+            if (lowBits <= 22 && lowBits >= 20) {
+                return;
+            }
+        }        
+        _invalidToken(ch);
+    }
+    
+    protected void _skipChunked() throws IOException
+    {
+        while (true) {
+            if (_inputPtr >= _inputEnd) {
+                loadMoreGuaranteed();
+            }
+            int ch = _inputBuffer[_inputPtr] & 0xFF;
+            if (ch == 0xFF) {
+                ++_inputPtr;
+                return;
+            }
+            _skipValue();
+        }
+    }
+    
+    protected void _skipBytesL(long llen) throws IOException
+    {
+        while (llen > MAX_INT_L) {
+            _skipBytes((int) MAX_INT_L);
+            llen -= MAX_INT_L;
+        }
+        _skipBytes((int) llen);
     }
 
     protected void _skipBytes(int len) throws IOException
@@ -1511,21 +1713,15 @@ public class CBORParser extends ParserMinimalBase
         _reportInvalidInitial(c);
     }
 	
-    protected void _reportInvalidInitial(int mask)
-        throws JsonParseException
-    {
+    protected void _reportInvalidInitial(int mask) throws JsonParseException {
         _reportError("Invalid UTF-8 start byte 0x"+Integer.toHexString(mask));
     }
 	
-    protected void _reportInvalidOther(int mask)
-        throws JsonParseException
-    {
+    protected void _reportInvalidOther(int mask) throws JsonParseException {
         _reportError("Invalid UTF-8 middle byte 0x"+Integer.toHexString(mask));
     }
 	
-    protected void _reportInvalidOther(int mask, int ptr)
-        throws JsonParseException
-    {
+    protected void _reportInvalidOther(int mask, int ptr) throws JsonParseException {
         _inputPtr = ptr;
         _reportInvalidOther(mask);
     }

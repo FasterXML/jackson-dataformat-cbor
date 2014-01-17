@@ -5,7 +5,7 @@ import java.util.*;
 
 import com.fasterxml.jackson.core.*;
 
-public class TestGeneratorLongStrings extends CBORTestBase
+public class GeneratorLongStringTest extends CBORTestBase
 {
     final static int DOC_LEN = 2000000; // 2 meg test doc
     

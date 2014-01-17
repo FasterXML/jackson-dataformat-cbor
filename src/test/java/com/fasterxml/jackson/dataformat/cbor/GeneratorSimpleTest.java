@@ -2,7 +2,7 @@ package com.fasterxml.jackson.dataformat.cbor;
 
 import java.io.*;
 
-public class TestGeneratorSimple extends CBORTestBase
+public class GeneratorSimpleTest extends CBORTestBase
 {
     /**
      * Test for verifying handling of 'true', 'false' and 'null' literals

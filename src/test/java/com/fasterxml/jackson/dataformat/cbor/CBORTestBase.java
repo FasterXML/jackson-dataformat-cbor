@@ -48,25 +48,24 @@ abstract class CBORTestBase
     /**********************************************************
      */
 
-    protected CBORParser _cborParser(byte[] input) throws IOException {
-        return _cborParser(input);
-    }
-
-    protected CBORParser _cborParser(InputStream in) throws IOException {
-        return _cborParser(in, false);
-    }
-
-    protected CBORParser _cborParser(InputStream in, boolean requireHeader) throws IOException
-    {
-        CBORFactory f = cborFactory();
-        return _cborParser(f, in);
+    protected CBORParser cborParser(ByteArrayOutputStream bytes) throws IOException {
+        return cborParser(bytes.toByteArray());
     }
     
-    protected CBORParser _cborParser(CBORFactory f, byte[] input) throws IOException {
+    protected CBORParser cborParser(byte[] input) throws IOException {
+        return cborParser(cborFactory(), input);
+    }
+
+    protected CBORParser cborParser(InputStream in) throws IOException {
+        CBORFactory f = cborFactory();
+        return cborParser(f, in);
+    }
+
+    protected CBORParser cborParser(CBORFactory f, byte[] input) throws IOException {
         return f.createParser(input);
     }
 
-    protected CBORParser _cborParser(CBORFactory f, InputStream in) throws IOException {
+    protected CBORParser cborParser(CBORFactory f, InputStream in) throws IOException {
         return f.createParser(in);
     }
     

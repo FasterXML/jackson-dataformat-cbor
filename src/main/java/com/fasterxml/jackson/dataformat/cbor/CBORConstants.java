@@ -66,7 +66,8 @@ public final class CBORConstants
 
     public final static byte BYTE_STRING_1BYTE_LEN = (byte) (PREFIX_TYPE_TEXT + 24);
     public final static byte BYTE_STRING_2BYTE_LEN = (byte) (PREFIX_TYPE_TEXT + 25);
-    
+
+    public final static byte BYTE_FLOAT16 = (byte) (PREFIX_TYPE_MISC + 25);
     public final static byte BYTE_FLOAT32 = (byte) (PREFIX_TYPE_MISC + 26);
     public final static byte BYTE_FLOAT64 = (byte) (PREFIX_TYPE_MISC + 27);
 
