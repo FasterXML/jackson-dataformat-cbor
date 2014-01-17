@@ -656,7 +656,8 @@ public class CBORParser extends ParserMinimalBase
         _binaryValue = null;
         // Two main modes: values, and field names.
         if (_parsingContext.inObject() && _currToken != JsonToken.FIELD_NAME) {
-            return (_currToken = _handleFieldName());
+            _handleFieldName();
+            return (_currToken = JsonToken.FIELD_NAME);
         }
         if (_inputPtr >= _inputEnd) {
             if (!loadMore()) {
@@ -726,9 +727,6 @@ public class CBORParser extends ParserMinimalBase
         case 4: // Array
         case 5: // Object
         case 6: // tag
-            /* 16-Jan-2014, tatu: TODO -- support some of the tags in future;
-             *   for now, not much benefit so just skip.
-             */
             _tagValue = Integer.valueOf(_decodeTag(lowBits));
             return nextToken();
             
@@ -764,43 +762,67 @@ public class CBORParser extends ParserMinimalBase
      * Method that handles initial token type recognition for token
      * that has to be either FIELD_NAME or END_OBJECT.
      */
-    protected final JsonToken _handleFieldName() throws IOException
+    protected final void _handleFieldName() throws IOException
     {     
         if (_inputPtr >= _inputEnd) {
             loadMoreGuaranteed();
         }
         int ch = _inputBuffer[_inputPtr++];
+        _typeByte = ch;
+        int type = ((ch >> 5) & 0x7);
+        
+        // Expecting a String, but let's allow int numbers too
+        if (type != CBORConstants.MAJOR_TYPE_TEXT) { // the usual case
+            String name;
+            if (type != CBORConstants.MAJOR_TYPE_TEXT) {
+                name = _numberToName(ch, false);
+            } else if (type != CBORConstants.MAJOR_TYPE_TEXT) {
+                name = _numberToName(ch, true);
+            } else {
+                throw _constructError("Unsupported major type ("+type+") for CBOR Objects, not (yet?) supported, only Strings");
+            }
+            _parsingContext.setCurrentName(name);
+            return;
+        }
+        final int lowBits = ch & 0x1F;
 
-        _reportError("Internal");
-        return null;
+        // Ok, String all right, handle
+        // !!! TODO
     }
 
-    protected final boolean _skipStd(int lowBits) throws IOException
+    protected String _numberToName(int ch, boolean neg) throws IOException
     {
-        int ptr = _inputPtr;
-        final int end = _inputEnd;
-        switch (lowBits) {
-        case 24:
-            ++ptr;
-            break;
-        case 25:
-            ptr += 2;
-            break;
-        case 26:
-            ptr += 2;
-            break;
-        case 27:
-            ptr += 8;
-            break;
-        default:
-            return false;
+        final int lowBits = ch & 0x1F;
+        int i;
+        if (lowBits <= 23) {
+            i = lowBits;
+        } else {
+            switch (lowBits) {
+            case 24:
+                i = _decode8Bits();
+                break;
+            case 25:
+                i = _decode16Bits();
+                break;
+            case 26:
+                i = _decode32Bits();
+                break;
+            case 27:
+                {
+                    long l = _decode64Bits();
+                    if (neg) {
+                        l = -l - 1L;
+                    }
+                    return String.valueOf(l);
+                }
+            default:
+                throw _constructError("Invalid length indicator for ints ("+lowBits+"), token 0x"+Integer.toHexString(ch));
+            }
         }
-        if (ptr >= end) { // offline rare case of split boundary
-            _skipBytes(ptr - _inputPtr);
-            return false;
+        if (neg) {
+            i = -i - 1;
         }
-        _inputPtr = ptr;
-        return true;
+        return String.valueOf(1);
     }
 
     private final int _decodeTag(int lowBits) throws IOException
@@ -825,8 +847,7 @@ public class CBORParser extends ParserMinimalBase
             }
             return (int) l;
         }
-        _reportError("Invalid low bits for Tag token: 0x"+Integer.toHexString(lowBits));
-        return 0; // never gets here
+        throw _constructError("Invalid low bits for Tag token: 0x"+Integer.toHexString(lowBits));
     }
     
     private final int _decode8Bits() throws IOException {
@@ -1426,10 +1447,9 @@ public class CBORParser extends ParserMinimalBase
     
     protected void convertNumberToBigDecimal() throws IOException
     {
-        /* 05-Aug-2008, tatus: Important note: this MUST start with
-         *   more accurate representations, since we don't know which
-         *   value is the original one (others get generated when
-         *   requested)
+        /* Important: this MUST start with more accurate representations,
+         * since we don't know which value is the original one (others
+         * generated when requested)
          */
     
         if ((_numTypesValid & NR_DOUBLE) != 0) {
@@ -1502,10 +1522,7 @@ public class CBORParser extends ParserMinimalBase
         switch ((ch >> 5) & 0x7) {
         case 0:
         case 1:
-            if (lowBits <= 23) { // small ints fit in type token
-                return;
-            }
-            if (_skipStd(lowBits)) {
+            if (lowBits <= 23 || _skipStd(lowBits)) { // small ints fit in type token
                 return;
             }
             break;
@@ -1518,7 +1535,7 @@ public class CBORParser extends ParserMinimalBase
                 if (lowBits <= 23) {
                     toSkip = lowBits;
                 } else if (lowBits == 31) {
-                    _skipChunked();
+                    _skipChunked((ch >> 5) & 0x7);
                     return;
                 } else {
                     switch (lowBits - 24) {
@@ -1544,11 +1561,16 @@ public class CBORParser extends ParserMinimalBase
             
         case 4: // Array
         case 5: // Object
+            
+            // !!! TODO
+            
         case 6: // tag
-            /* 16-Jan-2014, tatu: Not 100% if this is allowed or not; would make sense
-             *    to allow multiple tags via nesting. For now consider a well-formedness failure.
-             */
-            throw _constructError("Illegal nested marker tag");
+            // similar length indicator...
+            if (lowBits <= 23 || _skipStd(lowBits)) { // small ints fit in type token
+                return;
+            }
+            // but should we skip associated value too?
+            break;
         case 7: // mics, floats
             switch (lowBits) {
             case 20:
@@ -1567,8 +1589,36 @@ public class CBORParser extends ParserMinimalBase
         }        
         _invalidToken(ch);
     }
+
+    protected final boolean _skipStd(int lowBits) throws IOException
+    {
+        int ptr = _inputPtr;
+        final int end = _inputEnd;
+        switch (lowBits) {
+        case 24:
+            ++ptr;
+            break;
+        case 25:
+            ptr += 2;
+            break;
+        case 26:
+            ptr += 2;
+            break;
+        case 27:
+            ptr += 8;
+            break;
+        default:
+            return false;
+        }
+        if (ptr >= end) { // offline rare case of split boundary
+            _skipBytes(ptr - _inputPtr);
+            return false;
+        }
+        _inputPtr = ptr;
+        return true;
+    }
     
-    protected void _skipChunked() throws IOException
+    protected void _skipChunked(int expectedType) throws IOException
     {
         while (true) {
             if (_inputPtr >= _inputEnd) {
@@ -1578,6 +1628,12 @@ public class CBORParser extends ParserMinimalBase
             if (ch == 0xFF) {
                 ++_inputPtr;
                 return;
+            }
+            // verify that type matches
+            int type = (ch >> 5) & 0x7;
+            if (type != expectedType) {
+                throw _constructError("Mismatched chunk in chunked content: expected "+expectedType
+                        +" but encountered "+type);
             }
             _skipValue();
         }
