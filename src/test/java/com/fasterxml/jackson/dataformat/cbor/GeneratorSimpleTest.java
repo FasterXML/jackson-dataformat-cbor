@@ -1,9 +1,14 @@
 package com.fasterxml.jackson.dataformat.cbor;
 
 import java.io.*;
+import java.util.*;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class GeneratorSimpleTest extends CBORTestBase
 {
+    private final ObjectMapper MAPPER = cborMapper();
+    
     /**
      * Test for verifying handling of 'true', 'false' and 'null' literals
      */
@@ -26,30 +31,6 @@ public class GeneratorSimpleTest extends CBORTestBase
         gen.writeNull();
         gen.close();
         _verifyBytes(out.toByteArray(), CBORConstants.BYTE_NULL);
-    }
-
-    public void testEmptyArray() throws Exception
-    {
-        // First: empty array (2 bytes)
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        CBORGenerator gen = cborGenerator(out);
-        gen.writeStartArray();
-        gen.writeEndArray();
-        gen.close();
-        _verifyBytes(out.toByteArray(), CBORConstants.BYTE_ARRAY_INDEFINITE,
-        		CBORConstants.BYTE_BREAK);
-    }
-
-    public void testEmptyObject() throws Exception
-    {
-        // First: empty array (2 bytes)
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        CBORGenerator gen = cborGenerator(out);
-        gen.writeStartObject();
-        gen.writeEndObject();
-        gen.close();
-        _verifyBytes(out.toByteArray(), CBORConstants.BYTE_OBJECT_INDEFINITE,
-               CBORConstants.BYTE_BREAK);
     }
     
     public void testIntValues() throws Exception
@@ -135,6 +116,89 @@ public class GeneratorSimpleTest extends CBORTestBase
                 (byte) (rawL >> 16),
                 (byte) (rawL >> 8),
                 (byte) rawL);
+    }
+
+    public void testEmptyArray() throws Exception
+    {
+        // First: empty array (2 bytes)
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        CBORGenerator gen = cborGenerator(out);
+        gen.writeStartArray();
+        gen.writeEndArray();
+        gen.close();
+        _verifyBytes(out.toByteArray(), CBORConstants.BYTE_ARRAY_INDEFINITE,
+               CBORConstants.BYTE_BREAK);
+    }
+
+    public void testEmptyObject() throws Exception
+    {
+        // First: empty array (2 bytes)
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        CBORGenerator gen = cborGenerator(out);
+        gen.writeStartObject();
+        gen.writeEndObject();
+        gen.close();
+        _verifyBytes(out.toByteArray(), CBORConstants.BYTE_OBJECT_INDEFINITE,
+               CBORConstants.BYTE_BREAK);
+    }
+    
+    public void testIntArray() throws Exception
+    {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        CBORGenerator gen = cborGenerator(out);
+        
+        // currently will produce indefinite-length array
+        gen.writeStartArray();
+        gen.writeNumber(1);
+        gen.writeNumber(2);
+        gen.writeNumber(3);
+        gen.writeEndArray();
+        gen.close();
+        
+        final byte[] EXP = new byte[] {
+                CBORConstants.BYTE_ARRAY_INDEFINITE,
+                (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 1),
+                (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 2),
+                (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 3),
+                CBORConstants.BYTE_BREAK
+        };
+        
+        _verifyBytes(out.toByteArray(), EXP);
+
+        // Also, data-binding should produce identical
+        byte[] b = MAPPER.writeValueAsBytes(new int[] { 1, 2, 3 });
+        _verifyBytes(b, EXP);
+    }
+
+    public void testTrivialObject() throws Exception
+    {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        CBORGenerator gen = cborGenerator(out);
+        
+        // currently will produce indefinite-length Object
+        gen.writeStartObject();
+        gen.writeNumberField("a", 1);
+        gen.writeNumberField("b", 2);
+        gen.writeEndObject();
+        gen.close();
+
+        final byte[] EXP = new byte[] {
+                CBORConstants.BYTE_OBJECT_INDEFINITE,
+                (byte) (CBORConstants.PREFIX_TYPE_TEXT + 1),
+                (byte) 'a',
+                (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 1),
+                (byte) (CBORConstants.PREFIX_TYPE_TEXT + 1),
+                (byte) 'b',
+                (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 2),
+                CBORConstants.BYTE_BREAK
+        };
+
+        _verifyBytes(out.toByteArray(), EXP);
+        Map<String,Integer> map = new LinkedHashMap<String,Integer>();
+        map.put("a", 1);
+        map.put("b", 2);
+        byte[] b = MAPPER.writeValueAsBytes(map);
+        _verifyBytes(b, EXP);
     }
     
     public void testShortText() throws Exception
