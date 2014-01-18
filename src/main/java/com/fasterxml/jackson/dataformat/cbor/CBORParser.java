@@ -603,7 +603,6 @@ public final class CBORParser extends ParserMinimalBase
             }
         }
         int ch = _inputBuffer[_inputPtr++];
-        _typeByte = ch;
         final int lowBits = ch & 0x1F;
         switch ((ch >> 5) & 0x7) {
         case 0: // positive int
@@ -656,14 +655,14 @@ public final class CBORParser extends ParserMinimalBase
             return (_currToken = JsonToken.VALUE_NUMBER_INT);
 
         case 2: // byte[]
-            _throwInternal();
-            // !!! TODO
-            break;
+            _typeByte = ch;
+            _tokenIncomplete = true;
+            return (_currToken = JsonToken.VALUE_EMBEDDED_OBJECT);
 
         case 3: // String
-            // !!! TODO
-            // !!! TODO
-            _throwInternal();
+            _typeByte = ch;
+            _tokenIncomplete = true;
+            return (_currToken = JsonToken.VALUE_NUMBER_INT);
 
         case 4: // Array
             _currToken = JsonToken.START_ARRAY;
@@ -991,8 +990,6 @@ public final class CBORParser extends ParserMinimalBase
     public String getText() throws IOException
     {
         if (_tokenIncomplete) {
-            _tokenIncomplete = false;
-            // ...
             _finishToken();
         }
         if (_currToken == JsonToken.VALUE_STRING) {
@@ -1454,7 +1451,14 @@ public final class CBORParser extends ParserMinimalBase
     protected void _finishToken() throws IOException
     {
         _tokenIncomplete = false;
-        // sanity check
+        final int type = ((_typeByte >> 5) & 0x7);
+
+        // Either String or byte[]
+        if (type == CBORConstants.MAJOR_TYPE_TEXT) {
+            ; // TODO
+        } else if (type == CBORConstants.MAJOR_TYPE_TEXT) {
+            ; // TODO
+        }
         _throwInternal();
     }
 
@@ -1723,117 +1727,43 @@ public final class CBORParser extends ParserMinimalBase
      * contents themselves will not be needed any more.
      * Only called or byte array and text.
      */
-    protected void _skipIncomplete() throws IOException {
+    protected void _skipIncomplete() throws IOException
+    {
         _tokenIncomplete = false;
-    }
+        final int type = ((_typeByte >> 5) & 0x7);
 
-    protected void _skipValue() throws IOException
-    {
-        if (_inputPtr >= _inputEnd) {
-            loadMoreGuaranteed();
+        // Either String or byte[]
+        if (type != CBORConstants.MAJOR_TYPE_TEXT
+                && type == CBORConstants.MAJOR_TYPE_TEXT) {
+            _throwInternal();
         }
-        int ch = _inputBuffer[_inputPtr++];
-        final int lowBits = ch & 0x1F;
-        
-        main:
-        switch ((ch >> 5) & 0x7) {
-        case 0:
-        case 1:
-            if (lowBits <= 23 || _skipStd(lowBits)) { // small ints fit in type token
-                return;
-            }
-            break;
-        case 2: // byte[]
-        case 3: // String
-            // Not very different, figure out length
-            {
-                int toSkip;
+        final int lowBits = _typeByte & 0x1F;
 
-                if (lowBits <= 23) {
-                    toSkip = lowBits;
-                } else if (lowBits == 31) {
-                    _skipChunked((ch >> 5) & 0x7);
-                    return;
-                } else {
-                    switch (lowBits - 24) {
-                    case 0:
-                        toSkip = _decode8Bits();
-                        break;
-                    case 1:
-                        toSkip = _decode16Bits();
-                        break;
-                    case 2:
-                        toSkip = _decode32Bits();
-                        break;
-                    case 3: // seriously?
-                        _skipBytesL(_decode64Bits());
-                        return;
-                    default:
-                        break main;
-                    }
-                }
-                _skipBytes(toSkip);
+        if (lowBits <= 23) {
+            if (lowBits > 0) {
+                _skipBytes(lowBits);
             }
-            
-            
-        case 4: // Array
-            // !!! TODO
-            
-        case 5: // Object
-            // !!! TODO
-            
-        case 6: // tag
-            // similar length indicator...
-            if (lowBits <= 23 || _skipStd(lowBits)) { // small ints fit in type token
-                return;
-            }
-            // but should we skip associated value too?
-            break;
-        case 7: // mics, floats
-            switch (lowBits) {
-            case 20:
-            case 21:
-            case 22: // single-byte tokens;
-                return;
-            }
-            if (_skipStd(lowBits)) {
-                return;
-            }
-            break;
-        default: // misc: tokens, floats
-            if (lowBits <= 22 && lowBits >= 20) {
-                return;
-            }
-        }        
-        _invalidToken(ch);
-    }
-
-    protected final boolean _skipStd(int lowBits) throws IOException
-    {
-        int ptr = _inputPtr;
-        final int end = _inputEnd;
+            return;
+        }
         switch (lowBits) {
         case 24:
-            ++ptr;
+            _skipBytes(_decode8Bits());
             break;
         case 25:
-            ptr += 2;
+            _skipBytes(_decode16Bits());
             break;
         case 26:
-            ptr += 2;
+            _skipBytes(_decode32Bits());
             break;
-        case 27:
-            ptr += 8;
+        case 27: // seriously?
+            _skipBytesL(_decode64Bits());
+            break;
+        case 31:
+            _skipChunked(type);
             break;
         default:
-            return false;
+            _invalidToken(_typeByte);
         }
-        if (ptr >= end) { // offline rare case of split boundary
-            _skipBytes(ptr - _inputPtr);
-            return false;
-        }
-        _inputPtr = ptr;
-        return true;
     }
     
     protected void _skipChunked(int expectedType) throws IOException
@@ -1848,12 +1778,38 @@ public final class CBORParser extends ParserMinimalBase
                 return;
             }
             // verify that type matches
-            int type = (ch >> 5) & 0x7;
+            int type = (ch >> 5);
             if (type != expectedType) {
                 throw _constructError("Mismatched chunk in chunked content: expected "+expectedType
                         +" but encountered "+type);
             }
-            _skipValue();
+
+            final int lowBits = _typeByte & 0x1F;
+
+            if (lowBits <= 23) {
+                if (lowBits > 0) {
+                    _skipBytes(lowBits);
+                }
+                continue;
+            }
+            switch (lowBits) {
+            case 24:
+                _skipBytes(_decode8Bits());
+                break;
+            case 25:
+                _skipBytes(_decode16Bits());
+                break;
+            case 26:
+                _skipBytes(_decode32Bits());
+                break;
+            case 27: // seriously?
+                _skipBytesL(_decode64Bits());
+                break;
+            case 31:
+                throw _constructError("Illegal chunked-length indicator within chunked-length value (type "+expectedType+")");
+            default:
+                _invalidToken(_typeByte);
+            }
         }
     }
     
