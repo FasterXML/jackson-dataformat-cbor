@@ -508,89 +508,6 @@ public final class CBORParser extends ParserMinimalBase
     public CBORReadContext getParsingContext() {
         return _parsingContext;
     }
-    
-    /*
-    /**********************************************************
-    /* Low-level reading, other
-    /**********************************************************
-     */
-
-    protected final boolean loadMore() throws IOException
-    {
-        _currInputProcessed += _inputEnd;
-        
-        if (_inputStream != null) {
-            int count = _inputStream.read(_inputBuffer, 0, _inputBuffer.length);
-            if (count > 0) {
-                _inputPtr = 0;
-                _inputEnd = count;
-                return true;
-            }
-            // End of input
-            _closeInput();
-            // Should never return 0, so let's fail
-            if (count == 0) {
-                throw new IOException("InputStream.read() returned 0 characters when trying to read "+_inputBuffer.length+" bytes");
-            }
-        }
-        return false;
-    }
-
-    protected final void loadMoreGuaranteed() throws IOException {
-        if (!loadMore()) { _reportInvalidEOF(); }
-    }
-    
-    /**
-     * Helper method that will try to load at least specified number bytes in
-     * input buffer, possible moving existing data around if necessary
-     */
-    protected final void _loadToHaveAtLeast(int minAvailable) throws IOException
-    {
-        // No input stream, no leading (either we are closed, or have non-stream input source)
-        if (_inputStream == null) {
-            throw _constructError("Needed to read "+minAvailable+" bytes, reached end-of-input");
-        }
-        // Need to move remaining data in front?
-        int amount = _inputEnd - _inputPtr;
-        if (amount > 0 && _inputPtr > 0) {
-            _currInputProcessed += _inputPtr;
-            //_currInputRowStart -= _inputPtr;
-            System.arraycopy(_inputBuffer, _inputPtr, _inputBuffer, 0, amount);
-            _inputEnd = amount;
-        } else {
-            _inputEnd = 0;
-        }
-        _inputPtr = 0;
-        while (_inputEnd < minAvailable) {
-            int count = _inputStream.read(_inputBuffer, _inputEnd, _inputBuffer.length - _inputEnd);
-            if (count < 1) {
-                // End of input
-                _closeInput();
-                // Should never return 0, so let's fail
-                if (count == 0) {
-                    throw new IOException("InputStream.read() returned 0 characters when trying to read "+amount+" bytes");
-                }
-                throw _constructError("Needed to read "+minAvailable+" bytes, missed "+minAvailable+" before end-of-input");
-            }
-            _inputEnd += count;
-        }
-    }
-
-    protected void _closeInput() throws IOException {
-        if (_inputStream != null) {
-            if (_ioContext.isResourceManaged() || isEnabled(JsonParser.Feature.AUTO_CLOSE_SOURCE)) {
-                _inputStream.close();
-            }
-            _inputStream = null;
-        }
-    }
-
-    @Override
-    protected void _handleEOF() throws JsonParseException {
-        if (!_parsingContext.inRoot()) {
-            _reportInvalidEOF(": expected close marker for "+_parsingContext.getTypeDesc()+" (from "+_parsingContext.getStartLocation(_ioContext.getSourceReference())+")");
-        }
-    }
 
     /*
     /**********************************************************
@@ -1563,28 +1480,49 @@ public final class CBORParser extends ParserMinimalBase
         }
         final int len = ch & 0x1F;
         String name;
-        if (len > 23) {
-            name = _decodeMediumName(ch);
-        } else if (len == 0) {
-            name = "";
-        } else {
-            Name n = _findDecodedFromSymbols(len);
-            if (n != null) {
-                name = n.getName();
-                _inputPtr += len;
+        if (len <= 23) {
+            if (len == 0) {
+                name = "";
             } else {
-                name = _decodeShortName(len);
-                name = _addDecodedToSymbols(len, name);
+                Name n = _findDecodedFromSymbols(len);
+                if (n != null) {
+                    name = n.getName();
+                    _inputPtr += len;
+                } else {
+                    name = _decodeShortName(len);
+                    name = _addDecodedToSymbols(len, name);
+                }
             }
+        } else {
+            name = _decodeMediumName(ch);
         }
         _parsingContext.setCurrentName(name);
         return JsonToken.FIELD_NAME;
     }
 
-    private final String _decodeMediumName(int len) throws IOException
+    private final String _decodeMediumName(int lenMarker) throws IOException
     {
-        _throwInternal();
-        return null;
+        int len = _decodeExpLength(lenMarker);
+
+        // chunked?
+        if (len < 0) { // !!! TODO
+            _throwInternal();
+        }
+        // nope, straight. Do we have enough stuff read?
+        if ((_inputEnd - _inputPtr) < len) {
+            // or if not, could we read?
+            if (len >= _inputBuffer.length) {
+                // If not... 
+                _throwInternal(); // !!! TODO
+            }
+        }
+        Name n = _findDecodedFromSymbols(len);
+        if (n != null) {
+            _inputPtr += len;
+            return n.getName();
+        }
+        String name = _decodeShortName(len);
+        return _addDecodedToSymbols(len, name);
     }
     
     private final String _decodeShortName(int len) throws IOException
@@ -2033,7 +1971,90 @@ public final class CBORParser extends ParserMinimalBase
          */
         return ((c << 6) | (d & 0x3F)) - 0x10000;
     }
+
+    /*
+    /**********************************************************
+    /* Low-level reading, other
+    /**********************************************************
+     */
+
+    protected final boolean loadMore() throws IOException
+    {
+        _currInputProcessed += _inputEnd;
+        
+        if (_inputStream != null) {
+            int count = _inputStream.read(_inputBuffer, 0, _inputBuffer.length);
+            if (count > 0) {
+                _inputPtr = 0;
+                _inputEnd = count;
+                return true;
+            }
+            // End of input
+            _closeInput();
+            // Should never return 0, so let's fail
+            if (count == 0) {
+                throw new IOException("InputStream.read() returned 0 characters when trying to read "+_inputBuffer.length+" bytes");
+            }
+        }
+        return false;
+    }
+
+    protected final void loadMoreGuaranteed() throws IOException {
+        if (!loadMore()) { _reportInvalidEOF(); }
+    }
     
+    /**
+     * Helper method that will try to load at least specified number bytes in
+     * input buffer, possible moving existing data around if necessary
+     */
+    protected final void _loadToHaveAtLeast(int minAvailable) throws IOException
+    {
+        // No input stream, no leading (either we are closed, or have non-stream input source)
+        if (_inputStream == null) {
+            throw _constructError("Needed to read "+minAvailable+" bytes, reached end-of-input");
+        }
+        // Need to move remaining data in front?
+        int amount = _inputEnd - _inputPtr;
+        if (amount > 0 && _inputPtr > 0) {
+            _currInputProcessed += _inputPtr;
+            //_currInputRowStart -= _inputPtr;
+            System.arraycopy(_inputBuffer, _inputPtr, _inputBuffer, 0, amount);
+            _inputEnd = amount;
+        } else {
+            _inputEnd = 0;
+        }
+        _inputPtr = 0;
+        while (_inputEnd < minAvailable) {
+            int count = _inputStream.read(_inputBuffer, _inputEnd, _inputBuffer.length - _inputEnd);
+            if (count < 1) {
+                // End of input
+                _closeInput();
+                // Should never return 0, so let's fail
+                if (count == 0) {
+                    throw new IOException("InputStream.read() returned 0 characters when trying to read "+amount+" bytes");
+                }
+                throw _constructError("Needed to read "+minAvailable+" bytes, missed "+minAvailable+" before end-of-input");
+            }
+            _inputEnd += count;
+        }
+    }
+
+    protected void _closeInput() throws IOException {
+        if (_inputStream != null) {
+            if (_ioContext.isResourceManaged() || isEnabled(JsonParser.Feature.AUTO_CLOSE_SOURCE)) {
+                _inputStream.close();
+            }
+            _inputStream = null;
+        }
+    }
+
+    @Override
+    protected void _handleEOF() throws JsonParseException {
+        if (!_parsingContext.inRoot()) {
+            _reportInvalidEOF(": expected close marker for "+_parsingContext.getTypeDesc()+" (from "+_parsingContext.getStartLocation(_ioContext.getSourceReference())+")");
+        }
+    }
+
     /*
     /**********************************************************
     /* Internal methods, error reporting
