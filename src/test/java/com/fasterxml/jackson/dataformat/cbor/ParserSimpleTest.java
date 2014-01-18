@@ -120,15 +120,33 @@ public class ParserSimpleTest extends CBORTestBase
     {
         Map<String,Integer> input = new LinkedHashMap<String,Integer>();
         input.put("a", 1);
-        input.put("b", 2);
-        input.put("c", 3);
+        input.put("bar", 2);
+        input.put("foobar", 3);
         byte[] b = MAPPER.writeValueAsBytes(input);
 
+        // First, using streaming API
+        JsonParser p = cborParser(b);
+        assertToken(JsonToken.START_OBJECT, p.nextToken());
+        assertToken(JsonToken.FIELD_NAME, p.nextToken());
+        assertEquals("a", p.getCurrentName());
+        assertToken(JsonToken.VALUE_NUMBER_INT, p.nextToken());
+        assertEquals(1, p.getIntValue());
+        assertToken(JsonToken.FIELD_NAME, p.nextToken());
+        assertEquals("bar", p.getCurrentName());
+        assertToken(JsonToken.VALUE_NUMBER_INT, p.nextToken());
+        assertEquals(2, p.getIntValue());
+        assertToken(JsonToken.FIELD_NAME, p.nextToken());
+        assertEquals("foobar", p.getCurrentName());
+        assertToken(JsonToken.VALUE_NUMBER_INT, p.nextToken());
+        assertEquals(3, p.getIntValue());
+        assertToken(JsonToken.END_OBJECT, p.nextToken());
+        p.close();
+        
         Map<?,?> output = MAPPER.readValue(b, Map.class);
         assertEquals(3, output.size());
         assertEquals(Integer.valueOf(1), output.get("a"));
-        assertEquals(Integer.valueOf(2), output.get("b"));
-        assertEquals(Integer.valueOf(3), output.get("c"));
+        assertEquals(Integer.valueOf(2), output.get("bar"));
+        assertEquals(Integer.valueOf(3), output.get("foobar"));
     }
 
     /*

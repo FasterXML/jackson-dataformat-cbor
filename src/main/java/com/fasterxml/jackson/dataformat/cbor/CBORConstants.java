@@ -77,6 +77,8 @@ public final class CBORConstants
     public final static byte BYTE_TAG_BIGFLOAT = (byte) (PREFIX_TYPE_TAG + 5);
     
     public final static byte BYTE_BREAK = (byte) 0xFF;
+
+    public final static int INT_BREAK = 0xFF;
     
     /*
     /**********************************************************

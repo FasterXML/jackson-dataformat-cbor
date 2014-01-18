@@ -9,8 +9,8 @@ import com.fasterxml.jackson.core.base.ParserMinimalBase;
 import com.fasterxml.jackson.core.io.IOContext;
 import com.fasterxml.jackson.core.io.NumberInput;
 import com.fasterxml.jackson.core.json.DupDetector;
-import com.fasterxml.jackson.core.json.JsonReadContext;
 import com.fasterxml.jackson.core.sym.BytesToNameCanonicalizer;
+import com.fasterxml.jackson.core.sym.Name;
 import com.fasterxml.jackson.core.util.ByteArrayBuilder;
 import com.fasterxml.jackson.core.util.TextBuffer;
 
@@ -55,6 +55,8 @@ public final class CBORParser extends ParserMinimalBase
 
     private final static int[] NO_INTS = new int[0];
 
+    private final static int[] UTF8_UNIT_CODES = CBORConstants.sUtf8UnitLengths;
+    
     /*
     /**********************************************************
     /* Configuration
@@ -542,12 +544,11 @@ public final class CBORParser extends ParserMinimalBase
      * Helper method that will try to load at least specified number bytes in
      * input buffer, possible moving existing data around if necessary
      */
-    protected final boolean _loadToHaveAtLeast(int minAvailable)
-        throws IOException
+    protected final void _loadToHaveAtLeast(int minAvailable) throws IOException
     {
         // No input stream, no leading (either we are closed, or have non-stream input source)
         if (_inputStream == null) {
-            return false;
+            throw _constructError("Needed to read "+minAvailable+" bytes, reached end-of-input");
         }
         // Need to move remaining data in front?
         int amount = _inputEnd - _inputPtr;
@@ -569,11 +570,10 @@ public final class CBORParser extends ParserMinimalBase
                 if (count == 0) {
                     throw new IOException("InputStream.read() returned 0 characters when trying to read "+amount+" bytes");
                 }
-                return false;
+                throw _constructError("Needed to read "+minAvailable+" bytes, missed "+minAvailable+" before end-of-input");
             }
             _inputEnd += count;
         }
-        return true;
     }
 
     protected void _closeInput() throws IOException {
@@ -654,7 +654,7 @@ public final class CBORParser extends ParserMinimalBase
         _tokenInputTotal = _currInputProcessed + _inputPtr;
         // also: clear any data retained so far
         _binaryValue = null;
-
+        
         /* First: need to keep track of lengths of defined-length Arrays and
          * Objects (to materialize END_ARRAY/END_OBJECT as necessary);
          * as well as handle names for Object entries.
@@ -666,8 +666,7 @@ public final class CBORParser extends ParserMinimalBase
                     _parsingContext = _parsingContext.getParent();
                     return (_currToken = JsonToken.END_OBJECT);
                 }
-                _handleFieldName();
-                return (_currToken = JsonToken.FIELD_NAME);
+                return (_currToken = _decodeFieldName());
             }
         } else {
             if (!_parsingContext.expectMoreValues()) {
@@ -792,57 +791,18 @@ public final class CBORParser extends ParserMinimalBase
                 _numTypesValid = NR_DOUBLE;
                 return (_currToken = JsonToken.VALUE_NUMBER_FLOAT);
             case 31: // Break
-                
                 if (_parsingContext.inArray()) {
                     if (!_parsingContext.hasExpectedLength()) {
                         _parsingContext = _parsingContext.getParent();
                         return (_currToken = JsonToken.END_ARRAY);
                     }
-                } else if (_parsingContext.inObject()) {
-                    if (!_parsingContext.hasExpectedLength()) {
-                        _parsingContext = _parsingContext.getParent();
-                        return (_currToken = JsonToken.END_OBJECT);
-                    }
                 }
+                // Object end-marker can't occur here
                 _reportUnexpectedBreak();
-                // no Break markers in root?
-                throw _constructError("Unexpected Break (0xFF) token in root context");
             }
             _invalidToken(ch);
         }
         return null;
-    }
-    
-    /**
-     * Method that handles initial token type recognition for token
-     * that has to be either FIELD_NAME or END_OBJECT.
-     */
-    protected final void _handleFieldName() throws IOException
-    {     
-        if (_inputPtr >= _inputEnd) {
-            loadMoreGuaranteed();
-        }
-        int ch = _inputBuffer[_inputPtr++];
-        _typeByte = ch;
-        int type = ((ch >> 5) & 0x7);
-        
-        // Expecting a String, but let's allow int numbers too
-        if (type != CBORConstants.MAJOR_TYPE_TEXT) { // the usual case
-            String name;
-            if (type != CBORConstants.MAJOR_TYPE_TEXT) {
-                name = _numberToName(ch, false);
-            } else if (type != CBORConstants.MAJOR_TYPE_TEXT) {
-                name = _numberToName(ch, true);
-            } else {
-                throw _constructError("Unsupported major type ("+type+") for CBOR Objects, not (yet?) supported, only Strings");
-            }
-            _parsingContext.setCurrentName(name);
-            return;
-        }
-        final int lowBits = ch & 0x1F;
-
-        // Ok, String all right, handle
-        // !!! TODO
     }
 
     protected String _numberToName(int ch, boolean neg) throws IOException
@@ -1581,6 +1541,239 @@ public final class CBORParser extends ParserMinimalBase
         _throwInternal();
     }
 
+    protected final JsonToken _decodeFieldName() throws IOException
+    {     
+        if (_inputPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+        }
+        final int ch = _inputBuffer[_inputPtr++];
+        final int type = ((ch >> 5) & 0x7);
+
+        // Expecting a String, but let's allow int numbers too
+        if (type != CBORConstants.MAJOR_TYPE_TEXT) { // the usual case
+            if (ch == -1) {
+                if (!_parsingContext.hasExpectedLength()) {
+                    _parsingContext = _parsingContext.getParent();
+                    return JsonToken.END_OBJECT;
+                }
+                _reportUnexpectedBreak();
+            }
+            _decodeNonStringName(ch);
+            return JsonToken.FIELD_NAME;
+        }
+        final int len = ch & 0x1F;
+        String name;
+        if (len > 23) {
+            name = _decodeMediumName(ch);
+        } else if (len == 0) {
+            name = "";
+        } else {
+            Name n = _findDecodedFromSymbols(len);
+            if (n != null) {
+                name = n.getName();
+                _inputPtr += len;
+            } else {
+                name = _decodeShortName(len);
+                name = _addDecodedToSymbols(len, name);
+            }
+        }
+        _parsingContext.setCurrentName(name);
+        return JsonToken.FIELD_NAME;
+    }
+
+    private final String _decodeMediumName(int len) throws IOException
+    {
+        _throwInternal();
+        return null;
+    }
+    
+    private final String _decodeShortName(int len) throws IOException
+    {
+        // note: caller ensures we have enough bytes available
+        int outPtr = 0;
+        char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
+        int inPtr = _inputPtr;
+        _inputPtr += len;
+        final int[] codes = UTF8_UNIT_CODES;
+        final byte[] inBuf = _inputBuffer;
+
+        final int end = inPtr + len;
+        while (true) {
+            int i = inBuf[inPtr] & 0xFF;
+            int code = codes[i];
+            if (code != 0) {
+                break;
+            }
+            outBuf[outPtr++] = (char) i;
+            if (++inPtr == end) {
+                _textBuffer.setCurrentLength(outPtr);
+                return _textBuffer.contentsAsString();
+            }
+        }            
+
+        while (inPtr < end) {
+            int i = inBuf[inPtr++] & 0xFF;
+            int code = codes[i];
+            if (code != 0) {
+                // trickiest one, need surrogate handling
+                switch (code) {
+                case 1:
+                    i = ((i & 0x1F) << 6) | (inBuf[inPtr++] & 0x3F);
+                    break;
+                case 2:
+                    i = ((i & 0x0F) << 12)
+                    | ((inBuf[inPtr++] & 0x3F) << 6)
+                    | (inBuf[inPtr++] & 0x3F);
+                    break;
+                case 3:
+                    i = ((i & 0x07) << 18)
+                    | ((inBuf[inPtr++] & 0x3F) << 12)
+                    | ((inBuf[inPtr++] & 0x3F) << 6)
+                    | (inBuf[inPtr++] & 0x3F);
+                    // note: this is the codepoint value; need to split, too
+                    i -= 0x10000;
+                    outBuf[outPtr++] = (char) (0xD800 | (i >> 10));
+                    i = 0xDC00 | (i & 0x3FF);
+                    break;
+                default: // invalid
+                    _reportError("Invalid byte "+Integer.toHexString(i)+" in Object name");
+                }
+            }
+            outBuf[outPtr++] = (char) i;
+        }
+        _textBuffer.setCurrentLength(outPtr);
+        return _textBuffer.contentsAsString();
+    }
+    
+    /**
+     * Method that handles initial token type recognition for token
+     * that has to be either FIELD_NAME or END_OBJECT.
+     */
+    protected final void _decodeNonStringName(int ch) throws IOException
+    {
+        final int type = ((ch >> 5) & 0x7);
+        String name;
+        if (type == CBORConstants.MAJOR_TYPE_INT_POS) {
+            name = _numberToName(ch, false);
+        } else if (type == CBORConstants.MAJOR_TYPE_INT_NEG) {
+            name = _numberToName(ch, true);
+        } else {
+            if ((ch & 0xFF) == CBORConstants.INT_BREAK) {
+                _reportUnexpectedBreak();
+            }
+            throw _constructError("Unsupported major type ("+type+") for CBOR Objects, not (yet?) supported, only Strings");
+        }
+        _parsingContext.setCurrentName(name);
+    }
+    
+    private final Name _findDecodedFromSymbols(int len) throws IOException
+    {
+        if ((_inputEnd - _inputPtr) < len) {
+            _loadToHaveAtLeast(len);
+        }
+        // First: maybe we already have this name decoded?
+        if (len < 5) {
+            int inPtr = _inputPtr;
+            final byte[] inBuf = _inputBuffer;
+            int q = inBuf[inPtr] & 0xFF;
+            if (--len > 0) {
+                q = (q << 8) + (inBuf[++inPtr] & 0xFF);
+                if (--len > 0) {
+                    q = (q << 8) + (inBuf[++inPtr] & 0xFF);
+                    if (--len > 0) {
+                        q = (q << 8) + (inBuf[++inPtr] & 0xFF);
+                    }
+                }
+            }
+            _quad1 = q;
+            return _symbols.findName(q);
+        }
+        if (len < 9) {
+            int inPtr = _inputPtr;
+            final byte[] inBuf = _inputBuffer;
+            // First quadbyte is easy
+            int q1 = (inBuf[inPtr] & 0xFF) << 8;
+            q1 += (inBuf[++inPtr] & 0xFF);
+            q1 <<= 8;
+            q1 += (inBuf[++inPtr] & 0xFF);
+            q1 <<= 8;
+            q1 += (inBuf[++inPtr] & 0xFF);
+            int q2 = (inBuf[++inPtr] & 0xFF);
+            len -= 5;
+            if (len > 0) {
+                q2 = (q2 << 8) + (inBuf[++inPtr] & 0xFF);
+                if (--len > 0) {
+                    q2 = (q2 << 8) + (inBuf[++inPtr] & 0xFF);
+                    if (--len > 0) {
+                        q2 = (q2 << 8) + (inBuf[++inPtr] & 0xFF);
+                    }
+                }
+            }
+            _quad1 = q1;
+            _quad2 = q2;
+            return _symbols.findName(q1, q2);
+        }
+        return _findDecodedMedium(len);
+    }
+
+    /**
+     * Method for locating names longer than 8 bytes (in UTF-8)
+     */
+    private final Name _findDecodedMedium(int len) throws IOException
+    {
+        // first, need enough buffer to store bytes as ints:
+        {
+            int bufLen = (len + 3) >> 2;
+            if (bufLen > _quadBuffer.length) {
+                _quadBuffer = _growArrayTo(_quadBuffer, bufLen);
+            }
+        }
+        // then decode, full quads first
+        int offset = 0;
+        int inPtr = _inputPtr;
+        final byte[] inBuf = _inputBuffer;
+            do {
+                int q = (inBuf[inPtr++] & 0xFF) << 8;
+                q |= inBuf[inPtr++] & 0xFF;
+                q <<= 8;
+                q |= inBuf[inPtr++] & 0xFF;
+                q <<= 8;
+                q |= inBuf[inPtr++] & 0xFF;
+                _quadBuffer[offset++] = q;
+            } while ((len -= 4) > 3);
+            // and then leftovers
+            if (len > 0) {
+                int q = inBuf[inPtr] & 0xFF;
+                if (--len > 0) {
+                    q = (q << 8) + (inBuf[++inPtr] & 0xFF);
+                    if (--len > 0) {
+                        q = (q << 8) + (inBuf[++inPtr] & 0xFF);
+                    }
+                }
+                _quadBuffer[offset++] = q;
+        }
+        return _symbols.findName(_quadBuffer, offset);
+    }
+
+    private final String _addDecodedToSymbols(int len, String name) {
+        if (len < 5) {
+            return _symbols.addName(name, _quad1, 0).getName();
+        }
+        if (len < 9) {
+            return _symbols.addName(name, _quad1, _quad2).getName();
+        }
+        int qlen = (len + 3) >> 2;
+        return _symbols.addName(name, _quadBuffer, qlen).getName();
+    }
+    
+    private static int[] _growArrayTo(int[] arr, int minSize) {
+        int[] newArray = new int[minSize + 4];
+        if (arr != null) {
+            // !!! TODO: JDK 1.6, Arrays.copyOf
+            System.arraycopy(arr, 0, newArray, 0, arr.length);
+        }
+        return newArray;
+    }    
     /*
     /**********************************************************
     /* Internal methods, skipping
