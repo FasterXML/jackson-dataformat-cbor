@@ -740,12 +740,14 @@ public final class CBORParser extends ParserMinimalBase
             return (_currToken = JsonToken.VALUE_NUMBER_INT);
 
         case 2: // byte[]
+            _throwInternal();
             // !!! TODO
             break;
 
         case 3: // String
             // !!! TODO
             // !!! TODO
+            _throwInternal();
 
         case 4: // Array
             _currToken = JsonToken.START_ARRAY;
@@ -791,7 +793,7 @@ public final class CBORParser extends ParserMinimalBase
                 return (_currToken = JsonToken.VALUE_NUMBER_FLOAT);
             case 31: // Break
                 
-                if (_parsingContext.inObject()) {
+                if (_parsingContext.inArray()) {
                     if (!_parsingContext.hasExpectedLength()) {
                         _parsingContext = _parsingContext.getParent();
                         return (_currToken = JsonToken.END_ARRAY);

@@ -1,15 +1,20 @@
 package com.fasterxml.jackson.dataformat.cbor;
 
 import java.io.*;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.JsonParser.NumberType;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Unit tests for simple value types.
  */
 public class ParserSimpleTest extends CBORTestBase
 {
+    private final ObjectMapper MAPPER = cborMapper();
+
     /**
      * Test for verifying handling of 'true', 'false' and 'null' literals
      */
@@ -100,7 +105,32 @@ public class ParserSimpleTest extends CBORTestBase
         assertNull(p.nextToken());
         p.close();
     }
-    
+
+    public void testSimpleArray() throws Exception
+    {
+        byte[] b = MAPPER.writeValueAsBytes(new int[] { 1, 2, 3, 4});
+        int[] output = MAPPER.readValue(b, int[].class);
+        assertEquals(4, output.length);
+        for (int i = 1; i <= output.length; ++i) {
+            assertEquals(i, output[i-1]);
+        }
+    }
+
+    public void testSimpleObject() throws Exception
+    {
+        Map<String,Integer> input = new LinkedHashMap<String,Integer>();
+        input.put("a", 1);
+        input.put("b", 2);
+        input.put("c", 3);
+        byte[] b = MAPPER.writeValueAsBytes(input);
+
+        Map<?,?> output = MAPPER.readValue(b, Map.class);
+        assertEquals(3, output.size());
+        assertEquals(Integer.valueOf(1), output.get("a"));
+        assertEquals(Integer.valueOf(2), output.get("b"));
+        assertEquals(Integer.valueOf(3), output.get("c"));
+    }
+
     /*
     public void testShortText() throws Exception
     {
