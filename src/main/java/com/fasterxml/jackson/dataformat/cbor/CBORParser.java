@@ -662,12 +662,12 @@ public final class CBORParser extends ParserMinimalBase
         case 3: // String
             _typeByte = ch;
             _tokenIncomplete = true;
-            return (_currToken = JsonToken.VALUE_NUMBER_INT);
+            return (_currToken = JsonToken.VALUE_STRING);
 
         case 4: // Array
             _currToken = JsonToken.START_ARRAY;
             {
-                int len = _decodeExpLength(lowBits);
+                int len = _decodeExplicitLength(lowBits);
                 _parsingContext = _parsingContext.createChildArrayContext(len);
             }
             return _currToken;
@@ -675,7 +675,7 @@ public final class CBORParser extends ParserMinimalBase
         case 5: // Object
             _currToken = JsonToken.START_OBJECT;
             {
-                int len = _decodeExpLength(lowBits);
+                int len = _decodeExplicitLength(lowBits);
                 _parsingContext = _parsingContext.createChildObjectContext(len);
             }
             return _currToken;
@@ -756,8 +756,14 @@ public final class CBORParser extends ParserMinimalBase
         return String.valueOf(1);
     }
 
-    
-    private final int _decodeExpLength(int lowBits) throws IOException
+    /**
+     * Method used to decode explicit length of a variable-length value
+     * (or, for indefinite/chunked, indicate that one is not known).
+     * Note that long (64-bit) length is only allowed if it fits in
+     * 32-bit signed int, for now; expectation being that longer values
+     * are always encoded as chunks.
+     */
+    private final int _decodeExplicitLength(int lowBits) throws IOException
     {
         // common case, indefinite length; relies on marker
         if (lowBits == 31) {
@@ -1451,17 +1457,88 @@ public final class CBORParser extends ParserMinimalBase
     protected void _finishToken() throws IOException
     {
         _tokenIncomplete = false;
-        final int type = ((_typeByte >> 5) & 0x7);
+        int ch = _typeByte;
+        final int type = ((ch >> 5) & 0x7);
+        ch &= 0x1F;
 
         // Either String or byte[]
-        if (type == CBORConstants.MAJOR_TYPE_TEXT) {
-            ; // TODO
-        } else if (type == CBORConstants.MAJOR_TYPE_TEXT) {
-            ; // TODO
+        if (type != CBORConstants.MAJOR_TYPE_TEXT) {
+            if (type == CBORConstants.MAJOR_TYPE_BYTES) {
+                _finishBytes(_decodeExplicitLength(ch));
+                return;
+            }
+            // should never happen so
+            _throwInternal();
         }
-        _throwInternal();
+
+        // String value, decode
+        final int len = _decodeExplicitLength(ch);
+        if ((_inputEnd - _inputPtr) < len) {
+            // or if not, could we read?
+            if (len >= _inputBuffer.length) {
+                // If not enough space, need handling similar to chunked
+                
+                // !!! TODO
+                _throwInternal();
+            }
+            _loadToHaveAtLeast(len);
+        }
+        // offline for better optimization
+        _finishShortText(len);
     }
 
+    private final void _finishShortText(int len) throws IOException
+    {
+        if ((_inputEnd - _inputPtr) < len) {
+            _loadToHaveAtLeast(len);
+        }
+        int outPtr = 0;
+        char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
+        int inPtr = _inputPtr;
+        _inputPtr += len;
+        final int[] codes = UTF8_UNIT_CODES;
+        final byte[] inputBuf = _inputBuffer;
+        for (int end = inPtr + len; inPtr < end; ) {
+            int i = inputBuf[inPtr++] & 0xFF;
+            // tight(er) loop for ASCII
+            if (codes[i] == 0) {
+                outBuf[outPtr++] = (char) i;
+                continue;
+            }
+            // but...
+            switch (codes[i]) {
+            case 1:
+                i = ((i & 0x1F) << 6) | (inputBuf[inPtr++] & 0x3F);
+                break;
+            case 2:
+                i = ((i & 0x0F) << 12)
+                   | ((inputBuf[inPtr++] & 0x3F) << 6)
+                   | (inputBuf[inPtr++] & 0x3F);
+                break;
+            case 3:
+                i = ((i & 0x07) << 18)
+                 | ((inputBuf[inPtr++] & 0x3F) << 12)
+                 | ((inputBuf[inPtr++] & 0x3F) << 6)
+                 | (inputBuf[inPtr++] & 0x3F);
+                // note: this is the codepoint value; need to split, too
+                i -= 0x10000;
+                outBuf[outPtr++] = (char) (0xD800 | (i >> 10));
+                i = 0xDC00 | (i & 0x3FF);
+                break;
+            default: // invalid
+                _reportError("Invalid byte "+Integer.toHexString(i)+" in Unicode text block");
+            }
+            outBuf[outPtr++] = (char) i;
+        }        
+        _textBuffer.setCurrentLength(outPtr);
+    }
+
+    protected void _finishBytes(final int len) throws IOException
+    {
+        // !!! TODO
+        _throwInternal();
+    }
+    
     protected final JsonToken _decodeFieldName() throws IOException
     {     
         if (_inputPtr >= _inputEnd) {
@@ -1482,43 +1559,45 @@ public final class CBORParser extends ParserMinimalBase
             _decodeNonStringName(ch);
             return JsonToken.FIELD_NAME;
         }
-        final int len = ch & 0x1F;
+        final int lenMarker = ch & 0x1F;
         String name;
-        if (len <= 23) {
-            if (len == 0) {
+        if (lenMarker <= 23) {
+            if (lenMarker == 0) {
                 name = "";
             } else {
-                Name n = _findDecodedFromSymbols(len);
+                Name n = _findDecodedFromSymbols(lenMarker);
                 if (n != null) {
                     name = n.getName();
-                    _inputPtr += len;
+                    _inputPtr += lenMarker;
                 } else {
-                    name = _decodeShortName(len);
-                    name = _addDecodedToSymbols(len, name);
+                    name = _decodeShortName(lenMarker);
+                    name = _addDecodedToSymbols(lenMarker, name);
                 }
             }
         } else {
-            name = _decodeMediumName(ch);
+            final int actualLen = _decodeExplicitLength(lenMarker);
+            if (actualLen < 0) {
+                name = _decodeChunkedName();
+            } else {
+                name = _decodeLongerName(actualLen);
+            }
         }
         _parsingContext.setCurrentName(name);
         return JsonToken.FIELD_NAME;
     }
 
-    private final String _decodeMediumName(int lenMarker) throws IOException
+    private final String _decodeLongerName(int len) throws IOException
     {
-        int len = _decodeExpLength(lenMarker);
-
-        // chunked?
-        if (len < 0) { // !!! TODO
-            _throwInternal();
-        }
-        // nope, straight. Do we have enough stuff read?
+        // Do we have enough buffered content to read?
         if ((_inputEnd - _inputPtr) < len) {
             // or if not, could we read?
             if (len >= _inputBuffer.length) {
-                // If not... 
+                // If not enough space, need handling similar to chunked
+                
+                // !!! TODO
                 _throwInternal(); // !!! TODO
             }
+            _loadToHaveAtLeast(len);
         }
         Name n = _findDecodedFromSymbols(len);
         if (n != null) {
@@ -1585,6 +1664,13 @@ public final class CBORParser extends ParserMinimalBase
         }
         _textBuffer.setCurrentLength(outPtr);
         return _textBuffer.contentsAsString();
+    }
+
+    private final String _decodeChunkedName() throws IOException
+    {
+        // !!! TODO
+        _throwInternal();
+        return null;
     }
     
     /**
