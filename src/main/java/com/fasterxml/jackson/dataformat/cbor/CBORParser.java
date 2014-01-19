@@ -56,6 +56,10 @@ public final class CBORParser extends ParserMinimalBase
     private final static int[] NO_INTS = new int[0];
 
     private final static int[] UTF8_UNIT_CODES = CBORConstants.sUtf8UnitLengths;
+
+    // Constants for handling of 16-bit "mini-floats"
+    private final static double MATH_POW_2_10 = Math.pow(2, 10);
+    private final static double MATH_POW_2_NEG14 = Math.pow(2, -14);
     
     /*
     /**********************************************************
@@ -342,15 +346,12 @@ public final class CBORParser extends ParserMinimalBase
     // First primitives
 
     protected int _numberInt;
-
     protected long _numberLong;
-
     protected double _numberDouble;
 
     // And then object types
 
     protected BigInteger _numberBigInt;
-
     protected BigDecimal _numberBigDecimal;
     
     /*
@@ -693,8 +694,13 @@ public final class CBORParser extends ParserMinimalBase
             case 22:
                 return (_currToken = JsonToken.VALUE_NULL);
             case 25: // 16-bit float... 
-                // !!! TODO: support?
-                break;
+                // As per [http://stackoverflow.com/questions/5678432/decompressing-half-precision-floats-in-javascript]
+                {
+                    float f = (float) _decodeHalfSizeFloat();
+                    _numberDouble = (double) f;
+                    _numTypesValid = NR_DOUBLE;
+                }
+                return (_currToken = JsonToken.VALUE_NUMBER_FLOAT);
             case 26: // Float32
                 {
                     float f = Float.intBitsToFloat(_decode32Bits());
@@ -792,7 +798,27 @@ public final class CBORParser extends ParserMinimalBase
         }
         throw _constructError("Invalid length for "+_currToken+": 0x"+Integer.toHexString(lowBits));
     }
+    
+    private double _decodeHalfSizeFloat() throws IOException
+    {
+        int i16 = _decode16Bits() & 0xFFFF;
 
+        boolean neg = (i16 >> 15) != 0;
+        int e = (i16 >> 10) & 0x1F;
+        int f = i16 & 0x03FF;
+
+        if (e == 0) {
+            double d = MATH_POW_2_NEG14 * (f / MATH_POW_2_10);
+            return neg ? -d : d;
+        }
+        if (e == 0x1F) {
+            if (f != 0) return Double.NaN;
+            return neg ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
+        }
+        double d = Math.pow(2, e - 15) * (1 + f / MATH_POW_2_10);
+        return neg ? -d : d;
+    }
+    
     private final int _decodeTag(int lowBits) throws IOException
     {
         if (lowBits <= 23) {
@@ -824,7 +850,7 @@ public final class CBORParser extends ParserMinimalBase
         }
         return _inputBuffer[_inputPtr++] & 0xFF;
     }
-
+    
     private final int _decode16Bits() throws IOException {
         int ptr = _inputPtr;
         if ((ptr + 1) >= _inputEnd) {
@@ -909,9 +935,6 @@ public final class CBORParser extends ParserMinimalBase
 
     protected void _invalidToken(int ch) throws JsonParseException {
         ch &= 0xFF;
-        if (ch == (CBORConstants.BYTE_FLOAT16 & 0xFF)) {
-            throw _constructError("16-bit floating point values (type 0x"+Integer.toHexString(ch)+") not yet supported");
-        }
         if (ch == 0xFF) {
             throw _constructError("Mismatched BREAK byte (0xFF): encountered where value expected");
         }

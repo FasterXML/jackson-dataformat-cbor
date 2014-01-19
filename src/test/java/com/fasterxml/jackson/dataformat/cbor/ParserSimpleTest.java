@@ -90,6 +90,17 @@ public class ParserSimpleTest extends CBORTestBase
         // single byte
         _verifyFloat(f, 0.25);
         _verifyFloat(f, 20.5);
+
+        // But then, oddity: 16-bit mini-float
+        // Examples from [https://en.wikipedia.org/wiki/Half_precision_floating-point_format]
+        _verifyHalfFloat(f, 0, 0.0);
+        _verifyHalfFloat(f, 0x3C00, 1.0);
+        _verifyHalfFloat(f, 0xC000, -2.0);
+        _verifyHalfFloat(f, 0x7BFF, 65504.0);
+        _verifyHalfFloat(f, 0x7C00, Double.POSITIVE_INFINITY);
+        _verifyHalfFloat(f, 0xFC00, Double.NEGATIVE_INFINITY);
+
+        // ... can add more, but need bit looser comparison if so
     }
 
     private void _verifyFloat(CBORFactory f, double value) throws Exception
@@ -106,6 +117,19 @@ public class ParserSimpleTest extends CBORTestBase
         p.close();
     }
 
+    private void _verifyHalfFloat(JsonFactory f, int i16, double value) throws IOException
+    {
+        JsonParser p = f.createParser(new byte[] {
+                (byte) (CBORConstants.PREFIX_TYPE_MISC + 25),
+                (byte) (i16 >> 8), (byte) i16
+        });
+        assertEquals(JsonToken.VALUE_NUMBER_FLOAT, p.nextToken());
+        assertEquals(NumberType.DOUBLE, p.getNumberType());
+        assertEquals(value, p.getDoubleValue());
+        assertNull(p.nextToken());
+        p.close();
+    }
+    
     public void testSimpleArray() throws Exception
     {
         byte[] b = MAPPER.writeValueAsBytes(new int[] { 1, 2, 3, 4});
