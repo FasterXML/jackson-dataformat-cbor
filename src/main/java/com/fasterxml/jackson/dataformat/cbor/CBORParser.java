@@ -1473,6 +1473,10 @@ public final class CBORParser extends ParserMinimalBase
 
         // String value, decode
         final int len = _decodeExplicitLength(ch);
+        if (len == 0) {
+            _textBuffer.resetWithEmpty();
+            return;
+        }
         if ((_inputEnd - _inputPtr) < len) {
             // or if not, could we read?
             if (len >= _inputBuffer.length) {
@@ -1489,24 +1493,33 @@ public final class CBORParser extends ParserMinimalBase
 
     private final void _finishShortText(int len) throws IOException
     {
-        if ((_inputEnd - _inputPtr) < len) {
-            _loadToHaveAtLeast(len);
-        }
         int outPtr = 0;
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
         int inPtr = _inputPtr;
         _inputPtr += len;
         final int[] codes = UTF8_UNIT_CODES;
         final byte[] inputBuf = _inputBuffer;
-        for (int end = inPtr + len; inPtr < end; ) {
-            int i = inputBuf[inPtr++] & 0xFF;
+
+        // Let's actually do a tight loop for ASCII first:
+        final int end = inPtr + len;
+
+        while (true) {
+            int i = inputBuf[inPtr] & 0xFF;
             // tight(er) loop for ASCII
-            if (codes[i] == 0) {
-                outBuf[outPtr++] = (char) i;
-                continue;
+            if (codes[i] != 0) {
+                break;
             }
-            // but...
+            outBuf[outPtr++] = (char) i;
+            if (++inPtr == end) {
+                _textBuffer.setCurrentLength(outPtr);
+                return;
+            }
+        }
+        do {
+            int i = inputBuf[inPtr++] & 0xFF;
             switch (codes[i]) {
+            case 0:
+                break;
             case 1:
                 i = ((i & 0x1F) << 6) | (inputBuf[inPtr++] & 0x3F);
                 break;
@@ -1529,7 +1542,7 @@ public final class CBORParser extends ParserMinimalBase
                 _reportError("Invalid byte "+Integer.toHexString(i)+" in Unicode text block");
             }
             outBuf[outPtr++] = (char) i;
-        }        
+        } while (inPtr < end);
         _textBuffer.setCurrentLength(outPtr);
     }
 
