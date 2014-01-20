@@ -869,7 +869,7 @@ public class CBORGenerator extends GeneratorBase
     {
         if (len <= MAX_SHORT_STRING_CHARS) { // possibly short strings (not necessarily)
             _ensureSpace(MAX_SHORT_STRING_BYTES); // can afford approximate length
-            int actual = _encode(_outputTail+1, text, offset, len);
+            int actual = _encode(_outputTail+1, text, offset, offset+len);
             final byte[] buf = _outputBuffer;
             int ix = _outputTail;
             if (actual < MAX_SHORT_STRING_CHARS) { // fits in prefix byte
@@ -886,7 +886,7 @@ public class CBORGenerator extends GeneratorBase
         }
         if (len <= MAX_MEDIUM_STRING_CHARS) {
             _ensureSpace(MAX_MEDIUM_STRING_BYTES); // short enough, can approximate
-            int actual = _encode(_outputTail+2, text, offset, len);
+            int actual = _encode(_outputTail+2, text, offset, offset+len);
             final byte[] buf = _outputBuffer;
             int ix = _outputTail;
             if (actual < MAX_MEDIUM_STRING_CHARS) { // fits as expected
@@ -926,7 +926,7 @@ public class CBORGenerator extends GeneratorBase
         while (len > MAX_LONG_STRING_CHARS) {
             _ensureSpace(MAX_LONG_STRING_BYTES); // marker and single-byte length?
             int ix = _outputTail;
-            int actual = _encode(_outputTail+3, text, offset, MAX_LONG_STRING_CHARS);
+            int actual = _encode(_outputTail+3, text, offset, offset+MAX_LONG_STRING_CHARS);
             final byte[] buf = _outputBuffer;
             buf[ix++] = BYTE_STRING_2BYTE_LEN;
             buf[ix++] = (byte) (actual >> 8);

@@ -1496,6 +1496,7 @@ public final class CBORParser extends ParserMinimalBase
 
         // String value, decode
         final int len = _decodeExplicitLength(ch);
+
         if (len == 0) {
             _textBuffer.resetWithEmpty();
             return;
