@@ -3,6 +3,7 @@ package com.fasterxml.jackson.dataformat.cbor;
 import java.io.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Arrays;
 
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.base.ParserMinimalBase;
@@ -561,7 +562,7 @@ public final class CBORParser extends ParserMinimalBase
      */
 
     @Override
-    public JsonToken nextToken() throws IOException, JsonParseException
+    public JsonToken nextToken() throws IOException
     {
         _numTypesValid = NR_UNKNOWN;
         _tagValue = -1;
@@ -787,11 +788,7 @@ public final class CBORParser extends ParserMinimalBase
             return _decode32Bits();
         case 3:
             long l = _decode64Bits();
-            if (l < 0) {
-                throw _constructError("Illegal length for "+_currToken+": "+l);
-            }
-            // how about really big? Most likely an encoding error, so:
-            if (l > MAX_INT_L) {
+            if (l < 0 || l > MAX_INT_L) {
                 throw _constructError("Illegal length for "+_currToken+": "+l);
             }
             return (int) l;
@@ -931,7 +928,7 @@ public final class CBORParser extends ParserMinimalBase
     }
     
     // base impl is fine:
-    //public String getCurrentName() throws IOException, JsonParseException
+    //public String getCurrentName() throws IOException
 
     protected void _invalidToken(int ch) throws JsonParseException {
         ch &= 0xFF;
@@ -1150,17 +1147,62 @@ public final class CBORParser extends ParserMinimalBase
             // Todo, maybe: support base64 for text?
             _reportError("Current token ("+_currToken+") not VALUE_EMBEDDED_OBJECT, can not access as binary");
         }
-        if (_tokenIncomplete) {
-            _finishToken();
+        if (!_tokenIncomplete) { // someone already decoded or read
+            if (_binaryValue == null) { // if this method called twice in a row
+                return 0;
+            }
+            final int len = _binaryValue.length;
+            out.write(_binaryValue, 0, len);
+            return len;
         }
-        if (_binaryValue == null) { // most likely already read...
-            return 0;
+
+        _tokenIncomplete = false;
+        int len = _decodeExplicitLength(_typeByte & 0x1F);
+        if (len >= 0) { // non-chunked
+            return _readAndWriteBytes(out, len);
         }
-        final int len = _binaryValue.length;
-        out.write(_binaryValue, 0, len);
-        return len;
+        // Chunked...
+        int total = 0;
+        while (true) {
+            if (_inputPtr >= _inputEnd) {
+                loadMoreGuaranteed();
+            }
+            int ch = _inputBuffer[_inputPtr++] & 0xFF;
+            if (ch == 0xFF) { // end marker
+                return total;
+            }
+            // verify that type matches
+            int type = (ch >> 5);
+            if (type != CBORConstants.MAJOR_TYPE_BYTES) {
+                throw _constructError("Mismatched chunk in chunked content: expected "+CBORConstants.MAJOR_TYPE_BYTES
+                        +" but encountered "+type);
+            }
+            len = _decodeExplicitLength(ch & 0x1F);
+            if (len < 0) {
+                throw _constructError("Illegal chunked-length indicator within chunked-length value (type "+CBORConstants.MAJOR_TYPE_BYTES+")");
+            }
+            total += _readAndWriteBytes(out, len);
+        }
     }
 
+    private int _readAndWriteBytes(OutputStream out, int total) throws IOException
+    {
+        int left = total;
+        while (left > 0) {
+            int avail = _inputEnd - _inputPtr;
+            if (_inputPtr >= _inputEnd) {
+                loadMoreGuaranteed();
+                avail = _inputEnd - _inputPtr;
+            }
+            int count = Math.min(avail, left);
+            out.write(_inputBuffer, _inputPtr, count);
+            _inputPtr += count;
+            left -= count;
+        }
+        _tokenIncomplete = false;
+        return total;
+    }
+    
     /*
     /**********************************************************
     /* Numeric accessors of public API
@@ -1168,7 +1210,7 @@ public final class CBORParser extends ParserMinimalBase
      */
     
     @Override
-    public Number getNumberValue() throws IOException, JsonParseException
+    public Number getNumberValue() throws IOException
     {
         if (_numTypesValid == NR_UNKNOWN) {
             _checkNumericValue(NR_UNKNOWN); // will also check event type
@@ -1201,7 +1243,7 @@ public final class CBORParser extends ParserMinimalBase
     }
     
     @Override
-    public NumberType getNumberType() throws IOException, JsonParseException
+    public NumberType getNumberType() throws IOException
     {
         if (_numTypesValid == NR_UNKNOWN) {
             _checkNumericValue(NR_UNKNOWN); // will also check event type
@@ -1229,7 +1271,7 @@ public final class CBORParser extends ParserMinimalBase
     }
     
     @Override
-    public int getIntValue() throws IOException, JsonParseException
+    public int getIntValue() throws IOException
     {
         if ((_numTypesValid & NR_INT) == 0) {
             if (_numTypesValid == NR_UNKNOWN) { // not parsed at all
@@ -1243,7 +1285,7 @@ public final class CBORParser extends ParserMinimalBase
     }
     
     @Override
-    public long getLongValue() throws IOException, JsonParseException
+    public long getLongValue() throws IOException
     {
         if ((_numTypesValid & NR_LONG) == 0) {
             if (_numTypesValid == NR_UNKNOWN) {
@@ -1257,7 +1299,7 @@ public final class CBORParser extends ParserMinimalBase
     }
     
     @Override
-    public BigInteger getBigIntegerValue() throws IOException, JsonParseException
+    public BigInteger getBigIntegerValue() throws IOException
     {
         if ((_numTypesValid & NR_BIGINT) == 0) {
             if (_numTypesValid == NR_UNKNOWN) {
@@ -1271,7 +1313,7 @@ public final class CBORParser extends ParserMinimalBase
     }
     
     @Override
-    public float getFloatValue() throws IOException, JsonParseException
+    public float getFloatValue() throws IOException
     {
         double value = getDoubleValue();
         /* 22-Jan-2009, tatu: Bounds/range checks would be tricky
@@ -1286,7 +1328,7 @@ public final class CBORParser extends ParserMinimalBase
     }
     
     @Override
-    public double getDoubleValue() throws IOException, JsonParseException
+    public double getDoubleValue() throws IOException
     {
         if ((_numTypesValid & NR_DOUBLE) == 0) {
             if (_numTypesValid == NR_UNKNOWN) {
@@ -1300,7 +1342,7 @@ public final class CBORParser extends ParserMinimalBase
     }
     
     @Override
-    public BigDecimal getDecimalValue() throws IOException, JsonParseException
+    public BigDecimal getDecimalValue() throws IOException
     {
         if ((_numTypesValid & NR_BIGDECIMAL) == 0) {
             if (_numTypesValid == NR_UNKNOWN) {
@@ -1409,12 +1451,8 @@ public final class CBORParser extends ParserMinimalBase
     
     protected void convertNumberToDouble() throws IOException
     {
-        /* 05-Aug-2008, tatus: Important note: this MUST start with
-         *   more accurate representations, since we don't know which
-         *   value is the original one (others get generated when
-         *   requested)
-         */
-    
+        // Note: this MUST start with more accurate representations, since we don't know which
+        //  value is the original one (others get generated when requested)
         if ((_numTypesValid & NR_BIGDECIMAL) != 0) {
             _numberDouble = _numberBigDecimal.doubleValue();
         } else if ((_numTypesValid & NR_BIGINT) != 0) {
@@ -1431,16 +1469,11 @@ public final class CBORParser extends ParserMinimalBase
     
     protected void convertNumberToBigDecimal() throws IOException
     {
-        /* Important: this MUST start with more accurate representations,
-         * since we don't know which value is the original one (others
-         * generated when requested)
-         */
-    
+        // Note: this MUST start with more accurate representations, since we don't know which
+        //  value is the original one (others get generated when requested)
         if ((_numTypesValid & NR_DOUBLE) != 0) {
-            /* Let's actually parse from String representation,
-             * to avoid rounding errors that non-decimal floating operations
-             * would incur
-             */
+            // Let's parse from String representation, to avoid rounding errors that
+            //non-decimal floating operations would incur
             _numberBigDecimal = NumberInput.parseBigDecimal(getText());
         } else if ((_numTypesValid & NR_BIGINT) != 0) {
             _numberBigDecimal = new BigDecimal(_numberBigInt);
@@ -1840,13 +1873,9 @@ public final class CBORParser extends ParserMinimalBase
     }
     
     private static int[] _growArrayTo(int[] arr, int minSize) {
-        int[] newArray = new int[minSize + 4];
-        if (arr != null) {
-            // !!! TODO: JDK 1.6, Arrays.copyOf
-            System.arraycopy(arr, 0, newArray, 0, arr.length);
-        }
-        return newArray;
+        return Arrays.copyOf(arr, minSize+4);
     }    
+
     /*
     /**********************************************************
     /* Internal methods, skipping
@@ -1903,9 +1932,8 @@ public final class CBORParser extends ParserMinimalBase
             if (_inputPtr >= _inputEnd) {
                 loadMoreGuaranteed();
             }
-            int ch = _inputBuffer[_inputPtr] & 0xFF;
+            int ch = _inputBuffer[_inputPtr++] & 0xFF;
             if (ch == 0xFF) {
-                ++_inputPtr;
                 return;
             }
             // verify that type matches
