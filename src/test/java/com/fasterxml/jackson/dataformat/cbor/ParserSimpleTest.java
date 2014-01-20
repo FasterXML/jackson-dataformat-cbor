@@ -145,7 +145,8 @@ public class ParserSimpleTest extends CBORTestBase
         Map<String,Object> input = new LinkedHashMap<String,Object>();
         input.put("a", 1);
         input.put("bar", "foo");
-        input.put("foobar", -3.25);
+        final String NON_ASCII_NAME = "Y\\u00F6";
+        input.put(NON_ASCII_NAME, -3.25);
         input.put("", "");
         byte[] b = MAPPER.writeValueAsBytes(input);
 
@@ -164,7 +165,7 @@ public class ParserSimpleTest extends CBORTestBase
         assertEquals("foo", p.getText());
 
         assertToken(JsonToken.FIELD_NAME, p.nextToken());
-        assertEquals("foobar", p.getCurrentName());
+        assertEquals(NON_ASCII_NAME, p.getCurrentName());
         assertToken(JsonToken.VALUE_NUMBER_FLOAT, p.nextToken());
         assertEquals(-3.25, p.getDoubleValue());
 
@@ -181,7 +182,7 @@ public class ParserSimpleTest extends CBORTestBase
         assertEquals(4, output.size());
         assertEquals(Integer.valueOf(1), output.get("a"));
         assertEquals("foo", output.get("bar"));
-        assertEquals(Double.valueOf(-3.25), output.get("foobar"));
+        assertEquals(Double.valueOf(-3.25), output.get(NON_ASCII_NAME));
         assertEquals("", output.get(""));
     }
 

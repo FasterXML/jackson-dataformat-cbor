@@ -1032,7 +1032,6 @@ public final class CBORParser extends ParserMinimalBase
             return _parsingContext.getCurrentName();
         }
         if (t.isNumeric()) {
-            // TODO: optimize?
             return getNumberValue().toString();
         }
         return _currToken.asString();
@@ -1053,7 +1052,6 @@ public final class CBORParser extends ParserMinimalBase
                 // fall through
             case VALUE_NUMBER_INT:
             case VALUE_NUMBER_FLOAT:
-                // TODO: optimize
                 return getNumberValue().toString().toCharArray();
                 
             default:
@@ -1078,7 +1076,6 @@ public final class CBORParser extends ParserMinimalBase
                 // fall through
             case VALUE_NUMBER_INT:
             case VALUE_NUMBER_FLOAT:
-                // TODO: optimize
                 return getNumberValue().toString().length();
                 
             default:
@@ -1128,7 +1125,7 @@ public final class CBORParser extends ParserMinimalBase
             _finishToken();
         }
         if (_currToken != JsonToken.VALUE_EMBEDDED_OBJECT ) {
-            // Todo, maybe: support base64 for text?
+            // TODO, maybe: support base64 for text?
             _reportError("Current token ("+_currToken+") not VALUE_EMBEDDED_OBJECT, can not access as binary");
         }
         return _binaryValue;
@@ -1153,17 +1150,15 @@ public final class CBORParser extends ParserMinimalBase
             // Todo, maybe: support base64 for text?
             _reportError("Current token ("+_currToken+") not VALUE_EMBEDDED_OBJECT, can not access as binary");
         }
-        // Ok, first, unlikely (but legal?) case where someone already requested binary data:
-        if (!_tokenIncomplete) {
-            if (_binaryValue == null) { // most likely already read...
-                return 0;
-            }
-            final int len = _binaryValue.length;
-            out.write(_binaryValue, 0, len);
-            return len;
+        if (_tokenIncomplete) {
+            _finishToken();
         }
-        // !!! TODO
-        return -1;
+        if (_binaryValue == null) { // most likely already read...
+            return 0;
+        }
+        final int len = _binaryValue.length;
+        out.write(_binaryValue, 0, len);
+        return len;
     }
 
     /*
@@ -1505,9 +1500,8 @@ public final class CBORParser extends ParserMinimalBase
             // or if not, could we read?
             if (len >= _inputBuffer.length) {
                 // If not enough space, need handling similar to chunked
-                
-                // !!! TODO
-                _throwInternal();
+                _finishLongText(len);
+                return;
             }
             _loadToHaveAtLeast(len);
         }
@@ -1517,8 +1511,12 @@ public final class CBORParser extends ParserMinimalBase
 
     private final void _finishShortText(int len) throws IOException
     {
-        int outPtr = 0;
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
+        if (outBuf.length < len) { // one minor complication
+            outBuf = _textBuffer.expandCurrentSegment(len);
+        }
+        
+        int outPtr = 0;
         int inPtr = _inputPtr;
         _inputPtr += len;
         final int[] codes = UTF8_UNIT_CODES;
@@ -1570,6 +1568,12 @@ public final class CBORParser extends ParserMinimalBase
         _textBuffer.setCurrentLength(outPtr);
     }
 
+    private final void _finishLongText(int len) throws IOException
+    {
+        // !!! TODO
+        _throwInternal();
+    }
+    
     protected void _finishBytes(final int len) throws IOException
     {
         // !!! TODO
@@ -1622,39 +1626,21 @@ public final class CBORParser extends ParserMinimalBase
         _parsingContext.setCurrentName(name);
         return JsonToken.FIELD_NAME;
     }
-
-    private final String _decodeLongerName(int len) throws IOException
-    {
-        // Do we have enough buffered content to read?
-        if ((_inputEnd - _inputPtr) < len) {
-            // or if not, could we read?
-            if (len >= _inputBuffer.length) {
-                // If not enough space, need handling similar to chunked
-                
-                // !!! TODO
-                _throwInternal(); // !!! TODO
-            }
-            _loadToHaveAtLeast(len);
-        }
-        Name n = _findDecodedFromSymbols(len);
-        if (n != null) {
-            _inputPtr += len;
-            return n.getName();
-        }
-        String name = _decodeShortName(len);
-        return _addDecodedToSymbols(len, name);
-    }
     
     private final String _decodeShortName(int len) throws IOException
     {
         // note: caller ensures we have enough bytes available
         int outPtr = 0;
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
+        if (outBuf.length < len) { // one minor complication
+            outBuf = _textBuffer.expandCurrentSegment(len);
+        }
         int inPtr = _inputPtr;
         _inputPtr += len;
         final int[] codes = UTF8_UNIT_CODES;
         final byte[] inBuf = _inputBuffer;
 
+        // First a tight loop for Ascii
         final int end = inPtr + len;
         while (true) {
             int i = inBuf[inPtr] & 0xFF;
@@ -1667,8 +1653,9 @@ public final class CBORParser extends ParserMinimalBase
                 _textBuffer.setCurrentLength(outPtr);
                 return _textBuffer.contentsAsString();
             }
-        }            
+        }
 
+        // But in case there's multi-byte char, use a full loop
         while (inPtr < end) {
             int i = inBuf[inPtr++] & 0xFF;
             int code = codes[i];
@@ -1703,6 +1690,27 @@ public final class CBORParser extends ParserMinimalBase
         return _textBuffer.contentsAsString();
     }
 
+    private final String _decodeLongerName(int len) throws IOException
+    {
+        // Do we have enough buffered content to read?
+        if ((_inputEnd - _inputPtr) < len) {
+            // or if not, could we read?
+            if (len >= _inputBuffer.length) {
+                // If not enough space, need handling similar to chunked
+                // !!! TODO
+                _throwInternal();
+            }
+            _loadToHaveAtLeast(len);
+        }
+        Name n = _findDecodedFromSymbols(len);
+        if (n != null) {
+            _inputPtr += len;
+            return n.getName();
+        }
+        String name = _decodeShortName(len);
+        return _addDecodedToSymbols(len, name);
+    }
+    
     private final String _decodeChunkedName() throws IOException
     {
         // !!! TODO

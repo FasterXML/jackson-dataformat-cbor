@@ -741,7 +741,8 @@ public class CBORGenerator extends GeneratorBase
     @Override
     public void writeNumber(String encodedValue) throws IOException,JsonGenerationException, UnsupportedOperationException
     {
-        // just write as a String then?
+        // just write as a String -- CBOR does not require schema, so databinding
+        // on receiving end should be able to coerce it appropriately
         writeString(encodedValue);
     }
 
