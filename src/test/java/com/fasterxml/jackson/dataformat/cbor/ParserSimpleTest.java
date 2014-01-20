@@ -14,7 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class ParserSimpleTest extends CBORTestBase
 {
     private final ObjectMapper MAPPER = cborMapper();
-
+    
     /**
      * Test for verifying handling of 'true', 'false' and 'null' literals
      */
