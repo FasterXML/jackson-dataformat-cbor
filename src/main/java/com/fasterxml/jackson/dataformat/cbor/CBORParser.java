@@ -1525,11 +1525,15 @@ public final class CBORParser extends ParserMinimalBase
         // String value, decode
         final int len = _decodeExplicitLength(ch);
 
-        if (len == 0) {
-            _textBuffer.resetWithEmpty();
+        if (len <= 0) {
+            if (len < 0) {
+                _finishChunkedText();
+            } else {
+                _textBuffer.resetWithEmpty();
+            }
             return;
         }
-        if ((_inputEnd - _inputPtr) < len) {
+        if (len > (_inputEnd - _inputPtr)) {
             // or if not, could we read?
             if (len >= _inputBuffer.length) {
                 // If not enough space, need handling similar to chunked
@@ -1602,6 +1606,72 @@ public final class CBORParser extends ParserMinimalBase
     }
 
     private final void _finishLongText(int len) throws IOException
+    {
+        char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
+        int outPtr = 0;
+        final int[] codes = UTF8_UNIT_CODES;
+        final byte[] inputBuffer = _inputBuffer;
+        int outEnd = outBuf.length;
+
+        while (len > 0) {
+            if (_inputPtr >= _inputEnd) {
+                loadMoreGuaranteed();
+            }
+            int c = (int) inputBuffer[_inputPtr++] & 0xFF;
+            int code = codes[c];
+            if (code == 0 && outPtr < outEnd) {
+                outBuf[outPtr++] = (char) c;
+                continue;
+            }
+            // must have enough content, without buffer boundary
+            if (code > len) {
+                throw _constructError("Incomplete "+(code+1)+" byte UTF-8 character");
+            }
+            
+            switch (code) {
+            case 0:
+                break;
+            case 1: // 2-byte UTF
+                c = _decodeUtf8_2(c);
+                break;
+            case 2: // 3-byte UTF
+                if ((_inputEnd - _inputPtr) >= 2) {
+                    c = _decodeUtf8_3fast(c);
+                } else {
+                    c = _decodeUtf8_3(c);
+                }
+                break;
+            case 3: // 4-byte UTF
+                if (len == 0) {
+                    throw _constructError("Split UTF-8 surrogate pair (");
+                }
+                c = _decodeUtf8_4(c);
+                // Let's add first part right away:
+                outBuf[outPtr++] = (char) (0xD800 | (c >> 10));
+                if (outPtr >= outBuf.length) {
+                    outBuf = _textBuffer.finishCurrentSegment();
+                    outPtr = 0;
+                }
+                c = 0xDC00 | (c & 0x3FF);
+                // And let the other char output down below
+                break;
+            default:
+                // Is this good enough error message?
+                _reportInvalidChar(c);
+            }
+            // Need more room?
+            if (outPtr >= outEnd) {
+                outBuf = _textBuffer.finishCurrentSegment();
+                outPtr = 0;
+                outEnd = outBuf.length;
+            }
+            // Ok, let's add char to output:
+            outBuf[outPtr++] = (char) c;
+        }
+        _textBuffer.setCurrentLength(outPtr);
+    }
+
+    private final void _finishChunkedText() throws IOException
     {
         // !!! TODO
         _throwInternal();
@@ -1782,8 +1852,8 @@ public final class CBORParser extends ParserMinimalBase
             // or if not, could we read?
             if (len >= _inputBuffer.length) {
                 // If not enough space, need handling similar to chunked
-                // !!! TODO
-                _throwInternal();
+                _finishLongText(len);
+                return _textBuffer.contentsAsString();
             }
             _loadToHaveAtLeast(len);
         }
@@ -1798,9 +1868,8 @@ public final class CBORParser extends ParserMinimalBase
     
     private final String _decodeChunkedName() throws IOException
     {
-        // !!! TODO
-        _throwInternal();
-        return null;
+        _finishChunkedText();
+        return _textBuffer.contentsAsString();
     }
     
     /**

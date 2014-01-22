@@ -186,63 +186,44 @@ public class ParserSimpleTest extends CBORTestBase
         assertEquals("", output.get(""));
     }
 
-    /*
-    public void testShortText() throws Exception
+    public void testMediumText() throws Exception
     {
+        // First, use size that should fit in output buffer, but
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         CBORGenerator gen = cborGenerator(out);
-        gen.writeString("");
+        final String MEDIUM = generateUnicodeString(3900);
+        gen.writeString(MEDIUM);
         gen.close();
-        _verifyBytes(out.toByteArray(), CBORConstants.BYTE_EMPTY_STRING);
 
-        out = new ByteArrayOutputStream();
-        gen = cborGenerator(out);
-        gen.writeString("abc");
-        gen.close();
-        _verifyBytes(out.toByteArray(), (byte) (CBORConstants.PREFIX_TYPE_TEXT + 3),
-                (byte) 'a', (byte) 'b', (byte) 'c');
+        final byte[] b = out.toByteArray();
+
+        // verify that it is indeed non-chunked still...
+        assertEquals((byte) (CBORConstants.PREFIX_TYPE_TEXT + 25), b[0]);
+        
+        JsonParser p = cborParser(b);
+        assertToken(JsonToken.VALUE_STRING, p.nextToken());
+        assertEquals(MEDIUM, p.getText());
+        assertNull(p.nextToken());
+        p.close();
     }
     
-    public void testLongerText() throws Exception
+    public void testLongChunkedText() throws Exception
     {
-        // First, something with 8-bit length
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         CBORGenerator gen = cborGenerator(out);
-        final String SHORT_ASCII = generateAsciiString(240);
-        gen.writeString(SHORT_ASCII);
+        final String LONGEST = generateUnicodeString(72000);
+        gen.writeString(LONGEST);
         gen.close();
-        byte[] b = SHORT_ASCII.getBytes("UTF-8");
-        int len = b.length;
-        _verifyBytes(out.toByteArray(),
-                (byte) (CBORConstants.PREFIX_TYPE_TEXT + 24), (byte) len, b);
 
-        // and ditto with fuller Unicode
-        out = new ByteArrayOutputStream();
-        gen = cborGenerator(out);
-        final String SHORT_UNICODE = generateUnicodeString(160);
-        gen.writeString(SHORT_UNICODE);
-        gen.close();
-        b = SHORT_UNICODE.getBytes("UTF-8");
-        len = b.length;
-        // just a sanity check; will break if generation changes
-        assertEquals(196, len);
-        _verifyBytes(out.toByteArray(),
-                (byte) (CBORConstants.PREFIX_TYPE_TEXT + 24), (byte) len, b);
+        final byte[] b = out.toByteArray();
 
-        // and then something bit more sizable
-        out = new ByteArrayOutputStream();
-        gen = cborGenerator(out);
-        final String MEDIUM_UNICODE = generateUnicodeString(800);
-        gen.writeString(MEDIUM_UNICODE);
-        gen.close();
-        b = MEDIUM_UNICODE.getBytes("UTF-8");
-        len = b.length;
-        // just a sanity check; will break if generation changes
-        assertEquals(926, len);
-        _verifyBytes(out.toByteArray(),
-                (byte) (CBORConstants.PREFIX_TYPE_TEXT + 25),
-                (byte) (len>>8), (byte) len,
-                b);
+        // verify that it is chunked
+        assertEquals((byte) (CBORConstants.PREFIX_TYPE_TEXT + 0x1F), b[0]);
+        
+        JsonParser p = cborParser(b);
+        assertToken(JsonToken.VALUE_STRING, p.nextToken());
+        assertEquals(LONGEST, p.getText());
+        assertNull(p.nextToken());
+        p.close();
     }
-*/
 }
