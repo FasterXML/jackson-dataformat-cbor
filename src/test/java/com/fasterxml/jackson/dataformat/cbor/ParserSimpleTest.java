@@ -188,10 +188,19 @@ public class ParserSimpleTest extends CBORTestBase
 
     public void testMediumText() throws Exception
     {
+        _testMedium(1100);
+        _testMedium(1300);
+        _testMedium(1900);
+        _testMedium(2300);
+        _testMedium(3900);
+    }
+    
+    private void _testMedium(int len) throws Exception
+    {
         // First, use size that should fit in output buffer, but
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         CBORGenerator gen = cborGenerator(out);
-        final String MEDIUM = generateUnicodeString(3900);
+        final String MEDIUM = generateUnicodeString(len);
         gen.writeString(MEDIUM);
         gen.close();
 
@@ -203,6 +212,33 @@ public class ParserSimpleTest extends CBORTestBase
         JsonParser p = cborParser(b);
         assertToken(JsonToken.VALUE_STRING, p.nextToken());
         assertEquals(MEDIUM, p.getText());
+        assertNull(p.nextToken());
+        p.close();
+    }
+
+    public void testLongNonChunkedText() throws Exception
+    {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        final String LONG = generateUnicodeString(37000);
+        final int LEN = LONG.length();
+        out.write(CBORConstants.BYTE_ARRAY_INDEFINITE);
+        out.write((byte) (CBORConstants.PREFIX_TYPE_TEXT + 25));
+        out.write((byte) (LEN >> 8));
+        out.write((byte) LEN);
+        out.write(LONG.getBytes("UTF-8"));
+        out.write(CBORConstants.BYTE_BREAK);
+
+        final byte[] b = out.toByteArray();
+
+        JsonParser p = cborParser(b);
+        assertToken(JsonToken.START_ARRAY, p.nextToken());
+        assertToken(JsonToken.VALUE_STRING, p.nextToken());
+        String actual = p.getText();
+        assertEquals(LEN, actual.length());
+        
+        assertEquals(LONG, p.getText());
+        assertToken(JsonToken.END_ARRAY, p.nextToken());
         assertNull(p.nextToken());
         p.close();
     }

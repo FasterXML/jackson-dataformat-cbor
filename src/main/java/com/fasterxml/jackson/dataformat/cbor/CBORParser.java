@@ -1433,36 +1433,34 @@ public final class CBORParser extends ParserMinimalBase
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
         int outPtr = 0;
         final int[] codes = UTF8_UNIT_CODES;
-        final byte[] inputBuffer = _inputBuffer;
         int outEnd = outBuf.length;
 
-        while (len > 0) {
-            if (_inputPtr >= _inputEnd) {
-                loadMoreGuaranteed();
-            }
-            int c = (int) inputBuffer[_inputPtr++] & 0xFF;
+        while (--len >= 0) {
+            int c = (int) _nextByteAsInt();
             int code = codes[c];
             if (code == 0 && outPtr < outEnd) {
                 outBuf[outPtr++] = (char) c;
+                --len;
                 continue;
             }
-
-            // ensure we have enough data to decode
-            if ((_inputPtr + code) >= _inputEnd) {
-                if (code > len) {
-                    throw _constructError("Incomplete "+(code+1)+" byte UTF-8 character");
-                }
-                _loadToHaveAtLeast(code);
+            if ((len -= code) < 0) { // may need to improve error here but...
+                throw _constructError("Malformed UTF-8 character at end of long (non-chunked) text segment");
             }
             
             switch (code) {
             case 0:
                 break;
             case 1: // 2-byte UTF
-                c = _decodeUtf8_2(c);
+                {
+                    int d = _nextByte();
+                    if ((d & 0xC0) != 0x080) {
+                        _reportInvalidOther(d & 0xFF, _inputPtr);
+                    }
+                    c = ((c & 0x1F) << 6) | (d & 0x3F);
+                }
                 break;
             case 2: // 3-byte UTF
-                c = _decodeUtf8_3fast(c);
+                c = _decodeUtf8_3(c);
                 break;
             case 3: // 4-byte UTF
                 c = _decodeUtf8_4(c);
@@ -1491,7 +1489,7 @@ public final class CBORParser extends ParserMinimalBase
         }
         _textBuffer.setCurrentLength(outPtr);
     }
-    
+
     private final void _finishChunkedText() throws IOException
     {
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
@@ -1506,59 +1504,31 @@ public final class CBORParser extends ParserMinimalBase
             if (len < 0) {
                 break;
             }
-            while (len > 0) {
-                if (_inputPtr >= _inputEnd) {
-                    loadMoreGuaranteed();
-                }
-                int c = (int) inputBuffer[_inputPtr++] & 0xFF;
-                int code = codes[c];
-                if (code == 0 && outPtr < outEnd) {
-                    outBuf[outPtr++] = (char) c;
-                    continue;
-                }
-                switch (code) {
-                case 0:
-                    break;
-                case 1: // 2-byte UTF
-                    c = _decodeUtf8_2(c);
-                    break;
-                case 2: // 3-byte UTF
-                    if ((_inputEnd - _inputPtr) >= 2) {
-                        c = _decodeUtf8_3fast(c);
-                    } else {
-                        c = _decodeUtf8_3(c);
-                    }
-                    break;
-                case 3: // 4-byte UTF
-                    if (len == 0) {
-                        throw _constructError("Split UTF-8 surrogate pair (");
-                    }
-                    c = _decodeUtf8_4(c);
-                    // Let's add first part right away:
-                    outBuf[outPtr++] = (char) (0xD800 | (c >> 10));
-                    if (outPtr >= outBuf.length) {
-                        outBuf = _textBuffer.finishCurrentSegment();
-                        outPtr = 0;
-                        outEnd = outBuf.length;
-                    }
-                    c = 0xDC00 | (c & 0x3FF);
-                    // And let the other char output down below
-                    break;
-                default:
-                    // Is this good enough error message?
-                    _reportInvalidChar(c);
-                }
-                // Need more room?
-                if (outPtr >= outEnd) {
-                    outBuf = _textBuffer.finishCurrentSegment();
-                    outPtr = 0;
-                    outEnd = outBuf.length;
-                }
-                // Ok, let's add char to output:
-                outBuf[outPtr++] = (char) c;
-            }
+            _throwInternal();
         }
         _textBuffer.setCurrentLength(outPtr);
+    }
+
+    private final int _nextByte() throws IOException {
+        int inPtr = _inputPtr;
+        if (inPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+            inPtr = _inputPtr;
+        }
+        int ch = _inputBuffer[inPtr];
+        _inputPtr = inPtr+1;
+        return ch;
+    }
+    
+    private final int _nextByteAsInt() throws IOException {
+        int inPtr = _inputPtr;
+        if (inPtr >= _inputEnd) {
+            loadMoreGuaranteed();
+            inPtr = _inputPtr;
+        }
+        int ch = _inputBuffer[inPtr] & 0xFF;
+        _inputPtr = inPtr+1;
+        return ch;
     }
     
     @SuppressWarnings("resource")
@@ -2080,7 +2050,6 @@ public final class CBORParser extends ParserMinimalBase
         if (len < 0) {
             throw _constructError("Illegal chunked-length indicator within chunked-length value (type "+expType+")");
         }
-
         return len;
     }
     
@@ -2196,12 +2165,8 @@ public final class CBORParser extends ParserMinimalBase
     /**********************************************************
      */
 
-    private final int _decodeUtf8_2(int c) throws IOException
-    {
-        if (_inputPtr >= _inputEnd) {
-            loadMoreGuaranteed();
-        }
-        int d = (int) _inputBuffer[_inputPtr++];
+    private final int _decodeUtf8_2(int c) throws IOException {
+        int d = _nextByte();
         if ((d & 0xC0) != 0x080) {
             _reportInvalidOther(d & 0xFF, _inputPtr);
         }
@@ -2210,35 +2175,13 @@ public final class CBORParser extends ParserMinimalBase
 
     private final int _decodeUtf8_3(int c1) throws IOException
     {
-        if (_inputPtr >= _inputEnd) {
-            loadMoreGuaranteed();
-        }
         c1 &= 0x0F;
-        int d = (int) _inputBuffer[_inputPtr++];
+        int d = _nextByte();
         if ((d & 0xC0) != 0x080) {
             _reportInvalidOther(d & 0xFF, _inputPtr);
         }
         int c = (c1 << 6) | (d & 0x3F);
-        if (_inputPtr >= _inputEnd) {
-            loadMoreGuaranteed();
-        }
-        d = (int) _inputBuffer[_inputPtr++];
-        if ((d & 0xC0) != 0x080) {
-            _reportInvalidOther(d & 0xFF, _inputPtr);
-        }
-        c = (c << 6) | (d & 0x3F);
-        return c;
-    }
-
-    private final int _decodeUtf8_3fast(int c1) throws IOException
-    {
-        c1 &= 0x0F;
-        int d = (int) _inputBuffer[_inputPtr++];
-        if ((d & 0xC0) != 0x080) {
-            _reportInvalidOther(d & 0xFF, _inputPtr);
-        }
-        int c = (c1 << 6) | (d & 0x3F);
-        d = (int) _inputBuffer[_inputPtr++];
+        d = _nextByte();
         if ((d & 0xC0) != 0x080) {
             _reportInvalidOther(d & 0xFF, _inputPtr);
         }
@@ -2252,34 +2195,20 @@ public final class CBORParser extends ParserMinimalBase
      */
     private final int _decodeUtf8_4(int c) throws IOException
     {
-        if (_inputPtr >= _inputEnd) {
-            loadMoreGuaranteed();
-        }
-        int d = (int) _inputBuffer[_inputPtr++];
+        int d = _nextByte();
         if ((d & 0xC0) != 0x080) {
             _reportInvalidOther(d & 0xFF, _inputPtr);
         }
         c = ((c & 0x07) << 6) | (d & 0x3F);
-
-        if (_inputPtr >= _inputEnd) {
-            loadMoreGuaranteed();
-        }
-        d = (int) _inputBuffer[_inputPtr++];
+        d = _nextByte();
         if ((d & 0xC0) != 0x080) {
             _reportInvalidOther(d & 0xFF, _inputPtr);
         }
         c = (c << 6) | (d & 0x3F);
-        if (_inputPtr >= _inputEnd) {
-            loadMoreGuaranteed();
-        }
-        d = (int) _inputBuffer[_inputPtr++];
+        d = _nextByte();
         if ((d & 0xC0) != 0x080) {
             _reportInvalidOther(d & 0xFF, _inputPtr);
         }
-
-        /* note: won't change it to negative here, since caller
-         * already knows it'll need a surrogate
-         */
         return ((c << 6) | (d & 0x3F)) - 0x10000;
     }
 
