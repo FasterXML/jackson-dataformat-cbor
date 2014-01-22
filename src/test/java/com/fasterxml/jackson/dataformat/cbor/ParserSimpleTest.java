@@ -221,21 +221,24 @@ public class ParserSimpleTest extends CBORTestBase
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         final String LONG = generateUnicodeString(37000);
-        final int LEN = LONG.length();
+        final byte[] LONG_B = LONG.getBytes("UTF-8");
+        final int BYTE_LEN = LONG_B.length;
         out.write(CBORConstants.BYTE_ARRAY_INDEFINITE);
         out.write((byte) (CBORConstants.PREFIX_TYPE_TEXT + 25));
-        out.write((byte) (LEN >> 8));
-        out.write((byte) LEN);
+        out.write((byte) (BYTE_LEN >> 8));
+        out.write((byte) BYTE_LEN);
         out.write(LONG.getBytes("UTF-8"));
         out.write(CBORConstants.BYTE_BREAK);
 
         final byte[] b = out.toByteArray();
+        assertEquals(BYTE_LEN + 5, b.length);
 
-        JsonParser p = cborParser(b);
+        // Important! Need to construct a stream, to force boundary conditions
+        JsonParser p = cborParser(new ByteArrayInputStream(b));
         assertToken(JsonToken.START_ARRAY, p.nextToken());
         assertToken(JsonToken.VALUE_STRING, p.nextToken());
         String actual = p.getText();
-        assertEquals(LEN, actual.length());
+        assertEquals(LONG.length(), actual.length());
         
         assertEquals(LONG, p.getText());
         assertToken(JsonToken.END_ARRAY, p.nextToken());
@@ -256,7 +259,7 @@ public class ParserSimpleTest extends CBORTestBase
         // verify that it is chunked
         assertEquals((byte) (CBORConstants.PREFIX_TYPE_TEXT + 0x1F), b[0]);
         
-        JsonParser p = cborParser(b);
+        JsonParser p = cborParser(new ByteArrayInputStream(b));
         assertToken(JsonToken.VALUE_STRING, p.nextToken());
         assertEquals(LONGEST, p.getText());
         assertNull(p.nextToken());
