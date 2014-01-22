@@ -1440,7 +1440,6 @@ public final class CBORParser extends ParserMinimalBase
             int code = codes[c];
             if (code == 0 && outPtr < outEnd) {
                 outBuf[outPtr++] = (char) c;
-                --len;
                 continue;
             }
             if ((len -= code) < 0) { // may need to improve error here but...

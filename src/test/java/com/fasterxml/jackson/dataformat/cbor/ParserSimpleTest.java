@@ -238,6 +238,15 @@ public class ParserSimpleTest extends CBORTestBase
         assertToken(JsonToken.START_ARRAY, p.nextToken());
         assertToken(JsonToken.VALUE_STRING, p.nextToken());
         String actual = p.getText();
+
+        final int end = Math.min(LONG.length(), actual.length());
+        for (int i = 0; i < end; ++i) {
+            if (LONG.charAt(i) != actual.charAt(i)) {
+                fail("Character #"+i+" (of "+end+") differs; expected 0x"+Integer.toHexString(LONG.charAt(i))
+                        +" found 0x"+Integer.toHexString(actual.charAt(i)));
+            }
+        }
+        
         assertEquals(LONG.length(), actual.length());
         
         assertEquals(LONG, p.getText());
