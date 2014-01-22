@@ -70,7 +70,7 @@ public final class CBORConstants
     public final static byte BYTE_FLOAT16 = (byte) (PREFIX_TYPE_MISC + 25);
     public final static byte BYTE_FLOAT32 = (byte) (PREFIX_TYPE_MISC + 26);
     public final static byte BYTE_FLOAT64 = (byte) (PREFIX_TYPE_MISC + 27);
-
+    
     public final static byte BYTE_TAG_BIGNUM_POS = (byte) (PREFIX_TYPE_TAG + 2);
     public final static byte BYTE_TAG_BIGNUM_NEG = (byte) (PREFIX_TYPE_TAG + 3);
     public final static byte BYTE_TAG_DECIMAL_FRACTION = (byte) (PREFIX_TYPE_TAG + 4);

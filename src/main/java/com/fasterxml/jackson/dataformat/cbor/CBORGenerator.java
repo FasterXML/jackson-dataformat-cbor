@@ -41,9 +41,12 @@ public class CBORGenerator extends GeneratorBase
      */
     public enum Feature {
         /**
-         * Placeholder before any format-specific features are added.
+         * Feature that determines whether generator should try to use smallest (size-wise)
+         * integer representation: if true, will use smallest representation that is enough
+         * to retain value; if false, will use length indicated by argument type (4-byte
+         * for <code>int</code>, 8-byte for <code>long</code> and so on).
          */
-        BOGUS(false),
+        WRITE_MINIMAL_INTS(true),
         ;
 
         protected final boolean _defaultState;
@@ -53,8 +56,7 @@ public class CBORGenerator extends GeneratorBase
          * Method that calculates bit set (flags) of all features that
          * are enabled by default.
          */
-        public static int collectDefaults()
-        {
+        public static int collectDefaults() {
             int flags = 0;
             for (Feature f : values()) {
                 if (f.enabledByDefault()) {
@@ -70,6 +72,7 @@ public class CBORGenerator extends GeneratorBase
         }
         
         public boolean enabledByDefault() { return _defaultState; }
+        public boolean enabledIn(int flags) { return (flags & getMask()) != 0; }
         public int getMask() { return _mask; }
     }
     
@@ -422,7 +425,7 @@ public class CBORGenerator extends GeneratorBase
             _writeByte(BYTE_EMPTY_STRING);
             return;
         }
-        _writeInt32(PREFIX_TYPE_TEXT, len);
+        _writeLengthMarker(PREFIX_TYPE_TEXT, len);
         _writeBytes(raw, 0, len);
     }
     
@@ -445,7 +448,7 @@ public class CBORGenerator extends GeneratorBase
             _writeByte(BYTE_EMPTY_STRING);
             return;
         }
-        _writeInt32(PREFIX_TYPE_TEXT, len);
+        _writeLengthMarker(PREFIX_TYPE_TEXT, len);
         _writeBytes(raw, 0, len);
     }
 
@@ -523,7 +526,7 @@ public class CBORGenerator extends GeneratorBase
             return;
         }
         _verifyValueWrite("write Binary value");
-        _writeInt32(PREFIX_TYPE_BYTES, len);
+        _writeLengthMarker(PREFIX_TYPE_BYTES, len);
         _writeBytes(data, offset, len);
     }
 
@@ -538,7 +541,7 @@ public class CBORGenerator extends GeneratorBase
         _verifyValueWrite("write Binary value");
         int missing;
 
-        _writeInt32(PREFIX_TYPE_BYTES, dataLength);
+        _writeLengthMarker(PREFIX_TYPE_BYTES, dataLength);
         missing = _writeBytes(data, dataLength);
         if (missing > 0) {
             _reportError("Too few bytes available: missing "+missing+" bytes (out of "+dataLength+")");
@@ -588,16 +591,18 @@ public class CBORGenerator extends GeneratorBase
         } else {
             marker = PREFIX_TYPE_INT_POS;
         }
-        _writeInt32(marker, i);
+        _writeInt(marker, i);
     }
 
     @Override
     public void writeNumber(long l) throws IOException
     {
-        // First: maybe 32 bits is enough?
-        if (l <= MAX_INT_AS_LONG && l >= MIN_INT_AS_LONG) {
-            writeNumber((int) l);
-            return;
+        if (Feature.WRITE_MINIMAL_INTS.enabledIn(_formatFeatures)) {
+            // First: maybe 32 bits is enough?
+            if (l <= MAX_INT_AS_LONG && l >= MIN_INT_AS_LONG) {
+                writeNumber((int) l);
+                return;
+            }
         }
         _verifyValueWrite("write number");
         _ensureRoomForOutput(9);
@@ -641,7 +646,7 @@ public class CBORGenerator extends GeneratorBase
         }
         byte[] data = v.toByteArray();
         final int len = data.length;
-        _writeInt32(PREFIX_TYPE_BYTES, len);
+        _writeLengthMarker(PREFIX_TYPE_BYTES, len);
         _writeBytes(data, 0, len);
     }
     
@@ -733,7 +738,7 @@ public class CBORGenerator extends GeneratorBase
             _writeLongValue(v);
         } else {
             final int len = data.length;
-            _writeInt32(PREFIX_TYPE_BYTES, len);
+            _writeLengthMarker(PREFIX_TYPE_BYTES, len);
             _writeBytes(data, 0, len);
         }
     }
@@ -1126,7 +1131,7 @@ public class CBORGenerator extends GeneratorBase
         } else {
             marker = PREFIX_TYPE_INT_POS;
         }
-        _writeInt32(marker, i);
+        _writeLengthMarker(marker, i);
     }
 
     private final void _writeLongValue(long l) throws IOException
@@ -1150,8 +1155,8 @@ public class CBORGenerator extends GeneratorBase
         _outputBuffer[_outputTail++] = (byte) (i >> 8);
         _outputBuffer[_outputTail++] = (byte) i;
     }
-    
-    private final void _writeInt32(int majorType, int i) throws IOException
+
+    private final void _writeLengthMarker(int majorType, int i) throws IOException
     {
         _ensureRoomForOutput(5);
         if (i < 24) {
@@ -1170,6 +1175,39 @@ public class CBORGenerator extends GeneratorBase
             _outputBuffer[_outputTail++] = (byte) i;
             _outputBuffer[_outputTail++] = b0;
             return;
+        }
+        _outputBuffer[_outputTail++] = (byte) (majorType + 26);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+        _outputBuffer[_outputTail++] = b0;
+    }
+    
+    private final void _writeInt(int majorType, int i) throws IOException
+    {
+        _ensureRoomForOutput(5);
+        byte b0;
+        if (Feature.WRITE_MINIMAL_INTS.enabledIn(_formatFeatures)) {
+            if (i < 24) {
+                _outputBuffer[_outputTail++] = (byte) (majorType + i);
+                return;
+            }
+            if (i <= 0xFF) {
+                _outputBuffer[_outputTail++] = (byte) (majorType + 24);
+                _outputBuffer[_outputTail++] = (byte) i;
+                return;
+            }
+            b0 = (byte) i;
+            i >>= 8;
+            if (i <= 0xFF) {
+                _outputBuffer[_outputTail++] = (byte) (majorType + 25);
+                _outputBuffer[_outputTail++] = (byte) i;
+                _outputBuffer[_outputTail++] = b0;
+                return;
+            }
+        } else {
+            b0 = (byte) i;
+            i >>= 8;
         }
         _outputBuffer[_outputTail++] = (byte) (majorType + 26);
         _outputBuffer[_outputTail++] = (byte) (i >> 16);

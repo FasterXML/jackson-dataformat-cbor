@@ -32,7 +32,44 @@ public class GeneratorSimpleTest extends CBORTestBase
         gen.close();
         _verifyBytes(out.toByteArray(), CBORConstants.BYTE_NULL);
     }
-    
+
+    public void testMinimalIntValues() throws Exception
+    {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        CBORGenerator gen = cborGenerator(out);
+        assertTrue(gen.isEnabled(CBORGenerator.Feature.WRITE_MINIMAL_INTS));
+        gen.writeNumber(17);
+        gen.close();
+        _verifyBytes(out.toByteArray(),
+                (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 17));
+
+        // then without minimal
+        out = new ByteArrayOutputStream();
+        gen = cborGenerator(out);
+        gen.disable(CBORGenerator.Feature.WRITE_MINIMAL_INTS);
+        gen.writeNumber(17);
+        gen.close();
+        _verifyBytes(out.toByteArray(),
+                (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 26),
+                (byte) 0, (byte) 0, (byte) 0, (byte) 17);
+
+        out = new ByteArrayOutputStream();
+        gen = cborGenerator(out);
+        gen.writeNumber(Integer.MAX_VALUE);
+        gen.close();
+        _verifyBytes(out.toByteArray(),
+                (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 26),
+                (byte) 0x7F, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF);
+
+        out = new ByteArrayOutputStream();
+        gen = cborGenerator(out);
+        gen.writeNumber(Integer.MIN_VALUE);
+        gen.close();
+        _verifyBytes(out.toByteArray(),
+                (byte) (CBORConstants.PREFIX_TYPE_INT_NEG + 26),
+                (byte) 0x7F, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF);
+    }
+
     public void testIntValues() throws Exception
     {
         // first, single-byte
@@ -81,6 +118,22 @@ public class GeneratorSimpleTest extends CBORTestBase
         gen.close();
         _verifyBytes(out.toByteArray(),
                 (byte) (CBORConstants.PREFIX_TYPE_INT_NEG + 25), (byte) 0xFF, (byte) 0xFD);
+
+        out = new ByteArrayOutputStream();
+        gen = cborGenerator(out);
+        gen.writeNumber(Integer.MAX_VALUE);
+        gen.close();
+        _verifyBytes(out.toByteArray(),
+                (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 26),
+                (byte) 0x7F, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF);
+
+        out = new ByteArrayOutputStream();
+        gen = cborGenerator(out);
+        gen.writeNumber(Integer.MIN_VALUE);
+        gen.close();
+        _verifyBytes(out.toByteArray(),
+                (byte) (CBORConstants.PREFIX_TYPE_INT_NEG + 26),
+                (byte) 0x7F, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF);
     }
 
     public void testFloatValues() throws Exception
