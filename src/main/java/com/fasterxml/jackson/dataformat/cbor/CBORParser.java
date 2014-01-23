@@ -1489,23 +1489,76 @@ public final class CBORParser extends ParserMinimalBase
         _textBuffer.setCurrentLength(outPtr);
     }
 
+    // !!! TODO
     private final void _finishChunkedText() throws IOException
     {
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
         int outPtr = 0;
         final int[] codes = UTF8_UNIT_CODES;
-        final byte[] inputBuffer = _inputBuffer;
         int outEnd = outBuf.length;
-
-        // Outer loop for chunk decoding
+        
         while (true) {
             int len = _decodeChunkLength(CBORConstants.MAJOR_TYPE_TEXT);
             if (len < 0) {
                 break;
             }
-            _throwInternal();
+            while (--len >= 0) {
+                int c = (int) _nextByteAsInt();
+                int code = codes[c];
+                if (code == 0 && outPtr < outEnd) {
+                    outBuf[outPtr++] = (char) c;
+                    continue;
+                }
+                if ((len -= code) < 0) { // may or may not matter
+                    throw _constructError("Malformed UTF-8 character at end of long (non-chunked) text segment");
+                }
+                
+                switch (code) {
+                case 0:
+                    break;
+                case 1: // 2-byte UTF
+                    {
+                        int d = _nextByte();
+                        if ((d & 0xC0) != 0x080) {
+                            _reportInvalidOther(d & 0xFF, _inputPtr);
+                        }
+                        c = ((c & 0x1F) << 6) | (d & 0x3F);
+                    }
+                    break;
+                case 2: // 3-byte UTF
+                    c = _decodeUtf8_3(c);
+                    break;
+                case 3: // 4-byte UTF
+                    c = _decodeUtf8_4(c);
+                    // Let's add first part right away:
+                    outBuf[outPtr++] = (char) (0xD800 | (c >> 10));
+                    if (outPtr >= outBuf.length) {
+                        outBuf = _textBuffer.finishCurrentSegment();
+                        outPtr = 0;
+                        outEnd = outBuf.length;
+                    }
+                    c = 0xDC00 | (c & 0x3FF);
+                    // And let the other char output down below
+                    break;
+                default:
+                    // Is this good enough error message?
+                    _reportInvalidChar(c);
+                }
+                // Need more room?
+                if (outPtr >= outEnd) {
+                    outBuf = _textBuffer.finishCurrentSegment();
+                    outPtr = 0;
+                    outEnd = outBuf.length;
+                }
+                // Ok, let's add char to output:
+                outBuf[outPtr++] = (char) c;
+            }
         }
         _textBuffer.setCurrentLength(outPtr);
+
+        //////////
+
+//        int len = _decodeChunkLength(CBORConstants.MAJOR_TYPE_TEXT);
     }
 
     private final int _nextByte() throws IOException {

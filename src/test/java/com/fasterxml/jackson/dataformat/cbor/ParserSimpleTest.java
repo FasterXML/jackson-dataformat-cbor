@@ -259,7 +259,7 @@ public class ParserSimpleTest extends CBORTestBase
     {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         CBORGenerator gen = cborGenerator(out);
-        final String LONGEST = generateUnicodeString(72000);
+        final String LONGEST = generateUnicodeString(101000);
         gen.writeString(LONGEST);
         gen.close();
 
