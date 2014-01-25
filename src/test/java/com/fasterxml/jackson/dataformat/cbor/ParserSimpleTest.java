@@ -314,6 +314,13 @@ public class ParserSimpleTest extends CBORTestBase
         String actual = p.getText();
         assertNull(p.nextToken());
         assertEquals(input.length(), actual.length());
+        if (!input.equals(actual)) {
+            i = 0;
+            while (i < input.length() && input.charAt(i) == actual.charAt(i)) { ++i; }
+            fail("Strings differ at #"+i+" (length "+input.length()+"); expected 0x"
+                    +Integer.toHexString(input.charAt(i))+", got 0x"
+                    +Integer.toHexString(actual.charAt(i)));
+        }
         assertEquals(input, actual);
         p.close();
     }

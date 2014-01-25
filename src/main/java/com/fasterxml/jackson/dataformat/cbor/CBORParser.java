@@ -1549,7 +1549,6 @@ public final class CBORParser extends ParserMinimalBase
             case 1: // 2-byte UTF
                 {
                     int d = _nextChunkedByte();
-                    c = ((c & 0x1F) << 6) | (d & 0x3F);
                     if ((d & 0xC0) != 0x080) {
                         _reportInvalidOther(d & 0xFF, _inputPtr);
                     }
