@@ -257,20 +257,43 @@ public class ParserSimpleTest extends CBORTestBase
     
     public void testLongChunkedText() throws Exception
     {
+        // First, try with ASCII content
+        StringBuilder sb = new StringBuilder(21000);
+        for (int i = 0; i < 21000; ++i) {
+            sb.append('a');
+        }
+        _testLongChunkedText(sb.toString());        
+        // Second, with actual variable byte-length Unicode
+        _testLongChunkedText(generateUnicodeString(21000));
+    }
+        
+    public void _testLongChunkedText(String input) throws Exception
+    {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         CBORGenerator gen = cborGenerator(out);
-        final String LONGEST = generateUnicodeString(101000);
-        gen.writeString(LONGEST);
+        gen.writeString(input);
         gen.close();
 
         final byte[] b = out.toByteArray();
-
-        // verify that it is chunked
         assertEquals((byte) (CBORConstants.PREFIX_TYPE_TEXT + 0x1F), b[0]);
+        assertEquals(CBORConstants.BYTE_BREAK, b[b.length-1]);
+
+        // First, verify validity by scanning
+        int i = 1;
+        for (int end = b.length-1; i < end; ) {
+            assertEquals((byte) (CBORConstants.PREFIX_TYPE_TEXT + 25), b[i++]);
+            int len = ((b[i++] & 0xFF) << 8) + (b[i++] & 0xFF);
+            i += len;
+        }
+        assertEquals(b.length-1, i);
+        
+        // and then with actual parser
         
         JsonParser p = cborParser(new ByteArrayInputStream(b));
         assertToken(JsonToken.VALUE_STRING, p.nextToken());
-        assertEquals(LONGEST, p.getText());
+        String actual = p.getText();
+        assertEquals(input.length(), actual.length());
+        assertEquals(input, actual);
         assertNull(p.nextToken());
         p.close();
     }

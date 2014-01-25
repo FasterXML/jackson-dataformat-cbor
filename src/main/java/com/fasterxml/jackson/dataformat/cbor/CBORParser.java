@@ -261,6 +261,11 @@ public final class CBORParser extends ParserMinimalBase
      */
     protected int _typeByte;
 
+    /**
+     * Helper variables used when dealing with chunked content.
+     */
+    private int _chunkLeft, _chunkEnd;
+    
     /*
     /**********************************************************
     /* Symbol handling, decoding
@@ -1436,7 +1441,7 @@ public final class CBORParser extends ParserMinimalBase
         int outEnd = outBuf.length;
 
         while (--len >= 0) {
-            int c = (int) _nextByteAsInt();
+            int c = _nextByte() & 0xFF;
             int code = codes[c];
             if (code == 0 && outPtr < outEnd) {
                 outBuf[outPtr++] = (char) c;
@@ -1459,10 +1464,10 @@ public final class CBORParser extends ParserMinimalBase
                 }
                 break;
             case 2: // 3-byte UTF
-                c = _decodeUtf8_3(c);
+                c = _decodeUTF8_3(c);
                 break;
             case 3: // 4-byte UTF
-                c = _decodeUtf8_4(c);
+                c = _decodeUTF8_4(c);
                 // Let's add first part right away:
                 outBuf[outPtr++] = (char) (0xD800 | (c >> 10));
                 if (outPtr >= outBuf.length) {
@@ -1489,98 +1494,155 @@ public final class CBORParser extends ParserMinimalBase
         _textBuffer.setCurrentLength(outPtr);
     }
 
-    // !!! TODO
     private final void _finishChunkedText() throws IOException
     {
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
         int outPtr = 0;
         final int[] codes = UTF8_UNIT_CODES;
         int outEnd = outBuf.length;
+        final byte[] input = _inputBuffer;
+
+        _chunkEnd = _inputPtr;
         
         while (true) {
-            int len = _decodeChunkLength(CBORConstants.MAJOR_TYPE_TEXT);
-            if (len < 0) {
-                break;
-            }
-            while (--len >= 0) {
-                int c = (int) _nextByteAsInt();
-                int code = codes[c];
-                if (code == 0 && outPtr < outEnd) {
-                    outBuf[outPtr++] = (char) c;
-                    continue;
-                }
-                if ((len -= code) < 0) { // may or may not matter
-                    throw _constructError("Malformed UTF-8 character at end of long (non-chunked) text segment");
-                }
-                
-                switch (code) {
-                case 0:
-                    break;
-                case 1: // 2-byte UTF
-                    {
-                        int d = _nextByte();
-                        if ((d & 0xC0) != 0x080) {
-                            _reportInvalidOther(d & 0xFF, _inputPtr);
+            // at byte boundary fine to get break marker, hence different:
+            if (_inputPtr >= _chunkEnd) {
+                if (_inputPtr >= _inputEnd) { // end of buffer, but not necessarily chunk
+                    loadMoreGuaranteed();
+                    if (_chunkLeft > 0) {
+                        int end = _inputPtr + _chunkLeft;
+                        if (end <= _inputEnd) { // all within buffer
+                            _chunkLeft = 0;
+                            _chunkEnd = end;
+                        } else { // stretches beyond
+                            _chunkLeft = (end - _inputEnd);
+                            _chunkEnd = _inputEnd;
                         }
-                        c = ((c & 0x1F) << 6) | (d & 0x3F);
                     }
-                    break;
-                case 2: // 3-byte UTF
-                    c = _decodeUtf8_3(c);
-                    break;
-                case 3: // 4-byte UTF
-                    c = _decodeUtf8_4(c);
-                    // Let's add first part right away:
-                    outBuf[outPtr++] = (char) (0xD800 | (c >> 10));
-                    if (outPtr >= outBuf.length) {
-                        outBuf = _textBuffer.finishCurrentSegment();
-                        outPtr = 0;
-                        outEnd = outBuf.length;
-                    }
-                    c = 0xDC00 | (c & 0x3FF);
-                    // And let the other char output down below
-                    break;
-                default:
-                    // Is this good enough error message?
-                    _reportInvalidChar(c);
                 }
-                // Need more room?
-                if (outPtr >= outEnd) {
+                if (_inputPtr >= _chunkEnd) {
+                    int len = _decodeChunkLength(CBORConstants.MAJOR_TYPE_TEXT);
+                    if (len < 0) { // fine at this point (but not later)
+                        break;
+                    }
+                    int end = _inputPtr + len;
+                    if (end <= _inputEnd) { // all within buffer
+                        _chunkLeft = 0;
+                        _chunkEnd = end;
+                    } else { // stretches beyond
+                        _chunkLeft = (end - _inputEnd);
+                        _chunkEnd = _inputEnd;
+                    }
+                }
+            }
+            int c = input[_inputPtr++] & 0xFF;
+            int code = codes[c];
+            if (code == 0 && outPtr < outEnd) {
+                outBuf[outPtr++] = (char) c;
+                continue;
+            }
+            switch (code) {
+            case 0:
+                break;
+            case 1: // 2-byte UTF
+                {
+                    int d = _nextChunkedByte();
+                    c = ((c & 0x1F) << 6) | (d & 0x3F);
+                    if ((d & 0xC0) != 0x080) {
+                        _reportInvalidOther(d & 0xFF, _inputPtr);
+                    }
+                    c = ((c & 0x1F) << 6) | (d & 0x3F);
+                }
+                break;
+            case 2: // 3-byte UTF
+                c = _decodeChunkedUTF8_3(c);
+                break;
+            case 3: // 4-byte UTF
+                c = _decodeChunkedUTF8_4(c);
+                // Let's add first part right away:
+                outBuf[outPtr++] = (char) (0xD800 | (c >> 10));
+                if (outPtr >= outBuf.length) {
                     outBuf = _textBuffer.finishCurrentSegment();
                     outPtr = 0;
                     outEnd = outBuf.length;
                 }
-                // Ok, let's add char to output:
-                outBuf[outPtr++] = (char) c;
+                c = 0xDC00 | (c & 0x3FF);
+                // And let the other char output down below
+                break;
+            default:
+                // Is this good enough error message?
+                _reportInvalidChar(c);
             }
+            // Need more room?
+            if (outPtr >= outEnd) {
+                outBuf = _textBuffer.finishCurrentSegment();
+                outPtr = 0;
+                outEnd = outBuf.length;
+            }
+            // Ok, let's add char to output:
+            outBuf[outPtr++] = (char) c;
         }
         _textBuffer.setCurrentLength(outPtr);
-
-        //////////
-
-//        int len = _decodeChunkLength(CBORConstants.MAJOR_TYPE_TEXT);
     }
 
     private final int _nextByte() throws IOException {
         int inPtr = _inputPtr;
-        if (inPtr >= _inputEnd) {
-            loadMoreGuaranteed();
-            inPtr = _inputPtr;
+        if (inPtr < _inputEnd) {
+            int ch = _inputBuffer[inPtr];
+            _inputPtr = inPtr+1;
+            return ch;
+        }
+        loadMoreGuaranteed();
+        return _inputBuffer[_inputPtr++];
+    }
+
+    private final int _nextChunkedByte() throws IOException {
+        int inPtr = _inputPtr;
+        
+        // NOTE: _chunkEnd less than or equal to _inputEnd
+        if (inPtr >= _chunkEnd) {
+            return _nextChunkedByte2();
         }
         int ch = _inputBuffer[inPtr];
         _inputPtr = inPtr+1;
         return ch;
     }
-    
-    private final int _nextByteAsInt() throws IOException {
-        int inPtr = _inputPtr;
-        if (inPtr >= _inputEnd) {
+
+    private final int _nextChunkedByte2() throws IOException
+    {
+        // two possibilities: either end of buffer (in which case, just load more),
+        // or end of chunk
+
+        if (_inputPtr >= _inputEnd) { // end of buffer, but not necessarily chunk
             loadMoreGuaranteed();
-            inPtr = _inputPtr;
+            if (_chunkLeft > 0) {
+                int end = _inputPtr + _chunkLeft;
+                if (end <= _inputEnd) { // all within buffer
+                    _chunkLeft = 0;
+                    _chunkEnd = end;
+                } else { // stretches beyond
+                    _chunkLeft = (end - _inputEnd);
+                    _chunkEnd = _inputEnd;
+                }
+                // either way, got it now
+                return _inputBuffer[_inputPtr++];
+            }
         }
-        int ch = _inputBuffer[inPtr] & 0xFF;
-        _inputPtr = inPtr+1;
-        return ch;
+        int len = _decodeChunkLength(CBORConstants.MAJOR_TYPE_TEXT);
+        // not actually acceptable if we got a split character
+        if (len < 0) {
+            _reportInvalidEOF(": chunked Text ends with partial UTF-8 character");
+        }
+        int end = _inputPtr + len;
+        if (end <= _inputEnd) { // all within buffer
+            _chunkLeft = 0;
+            _chunkEnd = end;
+        } else { // stretches beyond
+            _chunkLeft = (end - _inputEnd);
+            _chunkEnd = _inputEnd;
+        }
+        // either way, got it now
+        return _inputBuffer[_inputPtr++];
     }
     
     @SuppressWarnings("resource")
@@ -2096,7 +2158,8 @@ public final class CBORParser extends ParserMinimalBase
         }
         int type = (ch >> 5);
         if (type != expType) {
-            throw _constructError("Mismatched chunk in chunked content: expected "+expType+" but encountered "+type);
+            throw _constructError("Mismatched chunk in chunked content: expected "
+                    +expType+" but encountered "+type+" (byte 0x"+Integer.toHexString(ch)+")");
         }
         int len = _decodeExplicitLength(ch & 0x1F);
         if (len < 0) {
@@ -2217,15 +2280,17 @@ public final class CBORParser extends ParserMinimalBase
     /**********************************************************
      */
 
-    private final int _decodeUtf8_2(int c) throws IOException {
+    /*
+    private final int X_decodeUTF8_2(int c) throws IOException {
         int d = _nextByte();
         if ((d & 0xC0) != 0x080) {
             _reportInvalidOther(d & 0xFF, _inputPtr);
         }
         return ((c & 0x1F) << 6) | (d & 0x3F);
     }
+    */
 
-    private final int _decodeUtf8_3(int c1) throws IOException
+    private final int _decodeUTF8_3(int c1) throws IOException
     {
         c1 &= 0x0F;
         int d = _nextByte();
@@ -2241,11 +2306,27 @@ public final class CBORParser extends ParserMinimalBase
         return c;
     }
 
+    private final int _decodeChunkedUTF8_3(int c1) throws IOException
+    {
+        c1 &= 0x0F;
+        int d = _nextChunkedByte();
+        if ((d & 0xC0) != 0x080) {
+            _reportInvalidOther(d & 0xFF, _inputPtr);
+        }
+        int c = (c1 << 6) | (d & 0x3F);
+        d = _nextChunkedByte();
+        if ((d & 0xC0) != 0x080) {
+            _reportInvalidOther(d & 0xFF, _inputPtr);
+        }
+        c = (c << 6) | (d & 0x3F);
+        return c;
+    }
+    
     /**
      * @return Character value <b>minus 0x10000</c>; this so that caller
      *    can readily expand it to actual surrogates
      */
-    private final int _decodeUtf8_4(int c) throws IOException
+    private final int _decodeUTF8_4(int c) throws IOException
     {
         int d = _nextByte();
         if ((d & 0xC0) != 0x080) {
@@ -2264,6 +2345,25 @@ public final class CBORParser extends ParserMinimalBase
         return ((c << 6) | (d & 0x3F)) - 0x10000;
     }
 
+    private final int _decodeChunkedUTF8_4(int c) throws IOException
+    {
+        int d = _nextChunkedByte();
+        if ((d & 0xC0) != 0x080) {
+            _reportInvalidOther(d & 0xFF, _inputPtr);
+        }
+        c = ((c & 0x07) << 6) | (d & 0x3F);
+        d = _nextChunkedByte();
+        if ((d & 0xC0) != 0x080) {
+            _reportInvalidOther(d & 0xFF, _inputPtr);
+        }
+        c = (c << 6) | (d & 0x3F);
+        d = _nextChunkedByte();
+        if ((d & 0xC0) != 0x080) {
+            _reportInvalidOther(d & 0xFF, _inputPtr);
+        }
+        return ((c << 6) | (d & 0x3F)) - 0x10000;
+    }
+    
     /*
     /**********************************************************
     /* Low-level reading, other
