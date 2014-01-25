@@ -260,7 +260,7 @@ public class ParserSimpleTest extends CBORTestBase
         // First, try with ASCII content
         StringBuilder sb = new StringBuilder(21000);
         for (int i = 0; i < 21000; ++i) {
-            sb.append('a');
+            sb.append('Z');
         }
         _testLongChunkedText(sb.toString());        
         // Second, with actual variable byte-length Unicode
@@ -281,26 +281,35 @@ public class ParserSimpleTest extends CBORTestBase
         // First, verify validity by scanning
         int i = 1;
         for (int end = b.length-1; i < end; ) {
-            assertEquals((byte) (CBORConstants.PREFIX_TYPE_TEXT + 25), b[i++]);
-            int len = ((b[i++] & 0xFF) << 8) + (b[i++] & 0xFF);
+            int type = b[i++] & 0xFF;
+            int len = type - CBORConstants.PREFIX_TYPE_TEXT;
+
+            if (len < 24) { // tiny, fine
+                ;
+            } else if (len == 24) { // 1-byte
+                len = (b[i++] & 0xFF);
+            } else if (len == 25) { // 2-byte
+                len = ((b[i++] & 0xFF) << 8) + (b[i++] & 0xFF);
+            }
             i += len;
         }
         assertEquals(b.length-1, i);
+
+        JsonParser p;
+
+        // then skipping
+        p = cborParser(new ByteArrayInputStream(b));
+        assertToken(JsonToken.VALUE_STRING, p.nextToken());
+        assertNull(p.nextToken());
+        p.close();
         
-        // and then with actual parser
-        
-        JsonParser p = cborParser(new ByteArrayInputStream(b));
+        // and then with actual full parsing/access
+        p = cborParser(new ByteArrayInputStream(b));
         assertToken(JsonToken.VALUE_STRING, p.nextToken());
         String actual = p.getText();
         assertNull(p.nextToken());
         assertEquals(input.length(), actual.length());
         assertEquals(input, actual);
-        p.close();
-
-        // Also: ensure we can also skip chunked text
-        p = cborParser(new ByteArrayInputStream(b));
-        assertToken(JsonToken.VALUE_STRING, p.nextToken());
-        assertNull(p.nextToken());
         p.close();
     }
 }
