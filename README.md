@@ -9,8 +9,12 @@ Module extends standard Jackson streaming API (`JsonFactory`, `JsonParser`, `Jso
 
 ## Status
 
-Module is being developer actively, and works for basic usage, but is not considered quite production
-ready yet. Stay tuned!
+First complete version from master (2.3.2-SNAPSHOT) works and implements complete support, except following:
+
+* While tags are written for some types (`BigDecimal`, `BigInteger`), they are not handling on parsing
+
+other than this, module is complete and passes basic tests, but has not been used for production systems.
+Version 2.4 is expected to be the first "official" release
 
 # Maven dependency
 
@@ -20,7 +24,7 @@ To use this extension on Maven-based projects, use following dependency:
 <dependency>
   <groupId>com.fasterxml.jackson.dataformat</groupId>
   <artifactId>jackson-dataformat-cbor</artifactId>
-  <version>2.3.2</version>
+  <version>2.3.2-SNAPSHOT</version>
 </dependency>
 ```
 
@@ -44,3 +48,5 @@ Implementation allows use of any of 3 main operating modes:
 * Streaming API (`CBORParser` and `CBORGenerator`)
 * Databinding (via `ObjectMapper` / `ObjectReader` / `ObjectWriter`)
 * Tree Model (using `TreeNode`, or its concrete subtype, `JsonNode` -- not JSON-specific despite the name)
+
+and all the usual data-binding use cases exactly like when using `JSON` or `Smile` (2 canonical 100% supported Jackson data formats).
