@@ -292,8 +292,14 @@ public class ParserSimpleTest extends CBORTestBase
         JsonParser p = cborParser(new ByteArrayInputStream(b));
         assertToken(JsonToken.VALUE_STRING, p.nextToken());
         String actual = p.getText();
+        assertNull(p.nextToken());
         assertEquals(input.length(), actual.length());
         assertEquals(input, actual);
+        p.close();
+
+        // Also: ensure we can also skip chunked text
+        p = cborParser(new ByteArrayInputStream(b));
+        assertToken(JsonToken.VALUE_STRING, p.nextToken());
         assertNull(p.nextToken());
         p.close();
     }

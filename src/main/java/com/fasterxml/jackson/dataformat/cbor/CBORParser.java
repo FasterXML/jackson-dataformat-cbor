@@ -1503,29 +1503,31 @@ public final class CBORParser extends ParserMinimalBase
         final byte[] input = _inputBuffer;
 
         _chunkEnd = _inputPtr;
+        _chunkLeft = 0;
         
         while (true) {
             // at byte boundary fine to get break marker, hence different:
             if (_inputPtr >= _chunkEnd) {
-                if (_inputPtr >= _inputEnd) { // end of buffer, but not necessarily chunk
-                    loadMoreGuaranteed();
-                    if (_chunkLeft > 0) {
-                        int end = _inputPtr + _chunkLeft;
-                        if (end <= _inputEnd) { // all within buffer
-                            _chunkLeft = 0;
-                            _chunkEnd = end;
-                        } else { // stretches beyond
-                            _chunkLeft = (end - _inputEnd);
-                            _chunkEnd = _inputEnd;
-                        }
-                    }
-                }
-                if (_inputPtr >= _chunkEnd) {
+                // end of chunk? get a new one, if there is one; if not, we are done
+                if (_chunkLeft == 0) {
                     int len = _decodeChunkLength(CBORConstants.MAJOR_TYPE_TEXT);
                     if (len < 0) { // fine at this point (but not later)
                         break;
                     }
+                    _chunkLeft = len;
                     int end = _inputPtr + len;
+                    if (end <= _inputEnd) { // all within buffer
+                        _chunkLeft = 0;
+                        _chunkEnd = end;
+                    } else { // stretches beyond
+                        _chunkLeft = (end - _inputEnd);
+                        _chunkEnd = _inputEnd;
+                    }
+                }
+                // besides of which just need to ensure there's content
+                if (_inputPtr >= _inputEnd) { // end of buffer, but not necessarily chunk
+                    loadMoreGuaranteed();
+                    int end = _inputPtr + _chunkLeft;
                     if (end <= _inputEnd) { // all within buffer
                         _chunkLeft = 0;
                         _chunkEnd = end;
@@ -2032,7 +2034,7 @@ public final class CBORParser extends ParserMinimalBase
                         +" but encountered "+type);
             }
 
-            final int lowBits = _typeByte & 0x1F;
+            final int lowBits = ch & 0x1F;
 
             if (lowBits <= 23) {
                 if (lowBits > 0) {
