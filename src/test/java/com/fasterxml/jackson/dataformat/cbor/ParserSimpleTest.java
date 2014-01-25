@@ -274,12 +274,15 @@ public class ParserSimpleTest extends CBORTestBase
         gen.writeString(input);
         gen.close();
 
+        final int textByteCount = input.getBytes("UTF-8").length;
         final byte[] b = out.toByteArray();
         assertEquals((byte) (CBORConstants.PREFIX_TYPE_TEXT + 0x1F), b[0]);
         assertEquals(CBORConstants.BYTE_BREAK, b[b.length-1]);
 
         // First, verify validity by scanning
         int i = 1;
+        int total = 0;
+
         for (int end = b.length-1; i < end; ) {
             int type = b[i++] & 0xFF;
             int len = type - CBORConstants.PREFIX_TYPE_TEXT;
@@ -292,8 +295,10 @@ public class ParserSimpleTest extends CBORTestBase
                 len = ((b[i++] & 0xFF) << 8) + (b[i++] & 0xFF);
             }
             i += len;
+            total += len;
         }
         assertEquals(b.length-1, i);
+        assertEquals(textByteCount, total);
 
         JsonParser p;
 

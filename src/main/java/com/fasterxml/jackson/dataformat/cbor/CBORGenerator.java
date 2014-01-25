@@ -909,11 +909,11 @@ public class CBORGenerator extends GeneratorBase
             _outputTail = ix+actual;
             return;
         }
-        if (len <= MAX_LONG_STRING_CHARS) { // too long, has to be chunked
+        if (len <= MAX_LONG_STRING_CHARS) { // no need to chunk yet
             // otherwise, long but single chunk
             _ensureSpace(MAX_LONG_STRING_BYTES); // calculate accurate length to avoid extra flushing
             int ix = _outputTail;
-            int actual = _encode(_outputTail+3, text, offset, len);
+            int actual = _encode(ix+3, text, offset, offset+len);
             final byte[] buf = _outputBuffer;
             buf[ix++] = BYTE_STRING_2BYTE_LEN;
             buf[ix++] = (byte) (actual >> 8);
