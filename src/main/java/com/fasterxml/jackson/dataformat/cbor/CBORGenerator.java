@@ -37,7 +37,7 @@ public class CBORGenerator extends GeneratorBase
     private final static int MAX_LONG_STRING_BYTES = (MAX_LONG_STRING_CHARS * 3) + 3;
     
     /**
-     * Enumeration that defines all togglable features for Smile generators.
+     * Enumeration that defines all togglable features for CBOR generator.
      */
     public enum Feature {
         /**
@@ -108,7 +108,7 @@ public class CBORGenerator extends GeneratorBase
 
     /**
      * Bit flag composed of bits that indicate which
-     * {@link com.fasterxml.jackson.CBORGenerator.smile.SmileGenerator.Feature}s
+     * {@link com.fasterxml.jackson.dataformat.CBORGenerator.Feature}s
      * are enabled.
      */
     protected int _formatFeatures;
@@ -170,11 +170,11 @@ public class CBORGenerator extends GeneratorBase
     /**********************************************************
      */
     
-    public CBORGenerator(IOContext ctxt, int jsonFeatures, int smileFeatures,
+    public CBORGenerator(IOContext ctxt, int jsonFeatures, int formatFeatures,
             ObjectCodec codec, OutputStream out)
     {
         super(jsonFeatures, codec);
-        _formatFeatures = smileFeatures;
+        _formatFeatures = formatFeatures;
         _ioContext = ctxt;
         _out = out;
         _bufferRecyclable = true;
@@ -189,11 +189,11 @@ public class CBORGenerator extends GeneratorBase
         }
     }
 
-    public CBORGenerator(IOContext ctxt, int jsonFeatures, int smileFeatures,
+    public CBORGenerator(IOContext ctxt, int jsonFeatures, int formatFeatures,
             ObjectCodec codec, OutputStream out, byte[] outputBuffer, int offset, boolean bufferRecyclable)
     {
         super(jsonFeatures, codec);
-        _formatFeatures = smileFeatures;
+        _formatFeatures = formatFeatures;
         _ioContext = ctxt;
         _out = out;
         _bufferRecyclable = bufferRecyclable;
@@ -433,6 +433,10 @@ public class CBORGenerator extends GeneratorBase
     public void writeString(char[] text, int offset, int len) throws IOException
     {
         _verifyValueWrite("write String value");
+        if (len == 0) {
+            _writeByte(BYTE_EMPTY_STRING);
+            return;
+        }
         _writeString(text, offset, len);
     }
 
@@ -440,10 +444,6 @@ public class CBORGenerator extends GeneratorBase
     public void writeRawUTF8String(byte[] raw, int offset, int len) throws IOException
     {
         _verifyValueWrite("write String value");
-        if (len == 0) {
-            _writeByte(BYTE_EMPTY_STRING);
-            return;
-        }
         if (len == 0) {
             _writeByte(BYTE_EMPTY_STRING);
             return;
@@ -458,18 +458,6 @@ public class CBORGenerator extends GeneratorBase
         // Since no escaping is needed, same as 'writeRawUTF8String'
         writeRawUTF8String(text, offset, len);
     }
-
-    /*
-    protected void _writeString(byte[] raw, int offset, int len) throws IOException
-    {
-        if (len == 0) {
-            _writeByte(TOKEN_LITERAL_EMPTY_STRING);
-            return;
-        }
-        _writeInt32(PREFIX_TYPE_TEXT, len);
-        _writeBytes(raw, offset, len);
-    }
-    */
 
     /*
     /**********************************************************
@@ -534,9 +522,13 @@ public class CBORGenerator extends GeneratorBase
     public int writeBinary(InputStream data, int dataLength)
         throws IOException
     {
-        // Smile requires knowledge of length in advance, since binary is length-prefixed
+        /* 28-Mar-2014, tatu: Theoretically we could implement encoder that uses
+         *   chunking to output binary content of unknown (a priori) length.
+         *   But for no let's require knowledge of length, for simplicity: may be
+         *   revisited in future.
+         */
         if (dataLength < 0) {
-            throw new UnsupportedOperationException("Must pass actual length for Smile encoded data");
+            throw new UnsupportedOperationException("Must pass actual length for CBOR encoded data");
         }
         _verifyValueWrite("write Binary value");
         int missing;

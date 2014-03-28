@@ -45,13 +45,13 @@ public class CBORFactory extends JsonFactory
      * Bitfield (set of flags) of all parser features that are enabled
      * by default.
      */
-    final static int DEFAULT_SMILE_PARSER_FEATURE_FLAGS = CBORParser.Feature.collectDefaults();
+    final static int DEFAULT_CBOR_PARSER_FEATURE_FLAGS = CBORParser.Feature.collectDefaults();
 
     /**
      * Bitfield (set of flags) of all generator features that are enabled
      * by default.
      */
-    final static int DEFAULT_SMILE_GENERATOR_FEATURE_FLAGS = CBORGenerator.Feature.collectDefaults();
+    final static int DEFAULT_CBOR_GENERATOR_FEATURE_FLAGS = CBORGenerator.Feature.collectDefaults();
 
     /*
     /**********************************************************
@@ -82,8 +82,8 @@ public class CBORFactory extends JsonFactory
 
     public CBORFactory(ObjectCodec oc) {
         super(oc);
-        _formatParserFeatures = DEFAULT_SMILE_PARSER_FEATURE_FLAGS;
-        _formatGeneratorFeatures = DEFAULT_SMILE_GENERATOR_FEATURE_FLAGS;
+        _formatParserFeatures = DEFAULT_CBOR_PARSER_FEATURE_FLAGS;
+        _formatGeneratorFeatures = DEFAULT_CBOR_GENERATOR_FEATURE_FLAGS;
     }
 
     /**

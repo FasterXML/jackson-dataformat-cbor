@@ -1,10 +1,12 @@
 Project: jackson-dataformat-cbor
-Version: 2.3.2 (01-Mar-2014)
+Version: 2.3.3 (xx-xxx-2014)
 
-The very first public version!
+No changes since 2.3.2.
 
 ------------------------------------------------------------------------
 === History: ===
 ------------------------------------------------------------------------
 
-- None -
+2.3.2 (01-Mar-2014)
+
+The very first public version!

@@ -80,7 +80,7 @@ public class CBORParserBootstrapper
         _bufferRecyclable = false;
     }
 
-    public CBORParser constructParser(int generalParserFeatures, int smileFeatures,
+    public CBORParser constructParser(int generalParserFeatures, int formatFeatures,
             boolean internNames,
             ObjectCodec codec, BytesToNameCanonicalizer rootByteSymbols)
         throws IOException, JsonParseException
@@ -88,7 +88,7 @@ public class CBORParserBootstrapper
         BytesToNameCanonicalizer can = rootByteSymbols.makeChild(true, internNames);
         // We just need a single byte to recognize possible "empty" document.
         ensureLoaded(1);
-        CBORParser p = new CBORParser(_context, generalParserFeatures, smileFeatures,
+        CBORParser p = new CBORParser(_context, generalParserFeatures, formatFeatures,
                 codec, can, 
                 _in, _inputBuffer, _inputPtr, _inputEnd, _bufferRecyclable);
         if (_inputPtr < _inputEnd) { // only false for empty doc
