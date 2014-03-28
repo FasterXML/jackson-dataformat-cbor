@@ -83,6 +83,28 @@ public class ParserSimpleTest extends CBORTestBase
         p.close();
     }
 
+    public void testLongValues() throws Exception
+    {
+        CBORFactory f = cborFactory();
+        _verifyLong(f, 1L + Integer.MAX_VALUE);
+        _verifyLong(f, -1L + Integer.MIN_VALUE);
+    }
+
+    private void _verifyLong(CBORFactory f, long value) throws Exception
+    {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        JsonGenerator gen = cborGenerator(f, out);
+        gen.writeNumber(value);
+        gen.close();
+        JsonParser p = cborParser(f, out.toByteArray());
+        assertEquals(JsonToken.VALUE_NUMBER_INT, p.nextToken());
+        assertEquals(value, p.getLongValue());
+        assertEquals(NumberType.LONG, p.getNumberType());
+        assertEquals((double) value, p.getDoubleValue());
+        assertNull(p.nextToken());
+        p.close();
+    }
+    
     public void testFloatValues() throws Exception
     {
         // first, single-byte

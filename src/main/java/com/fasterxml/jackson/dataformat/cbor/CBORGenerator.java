@@ -598,9 +598,9 @@ public class CBORGenerator extends GeneratorBase
         }
         _verifyValueWrite("write number");
         _ensureRoomForOutput(9);
-        if (l < 0) {
+        if (l < 0L) {
             l += 1;
-            l = -1;
+            l = -l;
             _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_NEG + 27);
         } else {
             _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_POS + 27);

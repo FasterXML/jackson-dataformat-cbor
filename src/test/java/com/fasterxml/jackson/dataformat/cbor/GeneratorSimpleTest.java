@@ -136,6 +136,22 @@ public class GeneratorSimpleTest extends CBORTestBase
                 (byte) 0x7F, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF);
     }
 
+    public void testLongValues() throws Exception
+    {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        CBORGenerator gen = cborGenerator(out);
+        long l = -1L + Integer.MIN_VALUE;
+        gen.writeNumber(l);
+        gen.close();
+        byte[] b = out.toByteArray();
+        assertEquals((byte) (CBORConstants.PREFIX_TYPE_INT_NEG + 27), b[0]);
+        assertEquals(9, b.length);
+        // could test full contents, but for now this shall suffice
+        assertEquals(0, b[1]);
+        assertEquals(0, b[2]);
+        assertEquals(0, b[3]);
+    }
+    
     public void testFloatValues() throws Exception
     {
         // first, 32-bit float
