@@ -26,8 +26,8 @@ import com.fasterxml.jackson.core.util.BufferRecycler;
  */
 public class CBORFactory extends JsonFactory
 {
-    private static final long serialVersionUID = 437616072383303549L;
-//    private static final long serialVersionUID = -1696783009312472365L;
+    // 2.4:
+    private static final long serialVersionUID = -5279097817965472664L;
 
     /*
     /**********************************************************
@@ -87,7 +87,7 @@ public class CBORFactory extends JsonFactory
     }
 
     /**
-     * Note: REQUIRES 2.2.1 -- unfortunate intra-patch dep but seems
+     * Note: REQUIRES at least 2.2.1 -- unfortunate intra-patch dep but seems
      * preferable to just leaving bug be as is
      * 
      * @since 2.2.1
@@ -357,6 +357,12 @@ public class CBORFactory extends JsonFactory
      */
     @Override
     protected JsonParser _createParser(Reader r, IOContext ctxt) throws IOException {
+        return _nonByteSource();
+    }
+
+    @Override
+    protected JsonParser _createParser(char[] data, int offset, int len, IOContext ctxt,
+            boolean recyclable) throws IOException {
         return _nonByteSource();
     }
 
