@@ -1,13 +1,13 @@
 Project: jackson-dataformat-cbor
 Version: 2.4.0 (xx-xxx-2014)
 
-No changes since 2.3
+No functional changes since 2.3.x.
 
 ------------------------------------------------------------------------
 === History: ===
 ------------------------------------------------------------------------
 
-2.3.3 (xx-xxx-2013)
+2.3.3 (10-Apr-2013)
 
 #2: Negative Long values written as zero
  (reported by gjesse@github)
