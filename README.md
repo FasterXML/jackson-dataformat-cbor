@@ -55,4 +55,4 @@ and all the usual data-binding use cases exactly like when using `JSON` or `Smil
 
 # Documentation
 
-* [Wiki](jackson-dataformat-cbow/wiki) (includes Javadocs)
+* [Wiki](../../wiki) (includes Javadocs)
