@@ -1,16 +1,16 @@
 ## Overview
 
-[Jackson](/FasterXML/jackson) (Java) dataformat module that supports reading and writing 
+[Jackson](/FasterXML/jackson) (Java) data format module that supports reading and writing 
 [CBOR](https://www.rfc-editor.org/info/rfc7049)
 ("Concise Binary Object Representation") encoded data.
 Module extends standard Jackson streaming API (`JsonFactory`, `JsonParser`, `JsonGenerator`), and as such works seamlessly with all the higher level data abstractions (data binding, tree model, and pluggable extensions).
-
-[![Build Status](https://fasterxml.ci.cloudbees.com/job/jackson-dataformat-cbor-master/badge/icon)](https://fasterxml.ci.cloudbees.com/job/jackson-dataformat-cbor-master/)
 
 ## Status
 
 As of version 2.4.0, this module is considered stable and production quality. Similar to JSON- and other JSON-like
 backends, it implementsfull support for all levels (streaming, data-binding, tree model).
+
+[![Build Status](https://fasterxml.ci.cloudbees.com/job/jackson-dataformat-cbor-master/badge/icon)](https://fasterxml.ci.cloudbees.com/job/jackson-dataformat-cbor-master/)
 
 ### Limitations
 
@@ -52,3 +52,7 @@ Implementation allows use of any of 3 main operating modes:
 * Tree Model (using `TreeNode`, or its concrete subtype, `JsonNode` -- not JSON-specific despite the name)
 
 and all the usual data-binding use cases exactly like when using `JSON` or `Smile` (2 canonical 100% supported Jackson data formats).
+
+# Documentation
+
+* [Wiki](jackson-dataformat-cbow/wiki) (includes Javadocs)
