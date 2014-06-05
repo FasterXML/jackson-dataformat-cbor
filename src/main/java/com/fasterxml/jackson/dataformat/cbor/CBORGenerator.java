@@ -792,12 +792,6 @@ public class CBORGenerator extends GeneratorBase
         }
 //        boolean wasClosed = _closed;
         super.close();
-
-        /*
-        if (!wasClosed && isEnabled(Feature.WRITE_END_MARKER)) {
-            _writeByte(BYTE_MARKER_END_OF_CONTENT);
-        }
-        */
         _flushBuffer();
 
         if (_ioContext.isResourceManaged() || isEnabled(JsonGenerator.Feature.AUTO_CLOSE_TARGET)) {
