@@ -280,25 +280,36 @@ public class CBORGenerator extends GeneratorBase
     }
 
     @Override
-    public final void writeFieldName(SerializableString name)
-        throws IOException
+    public final void writeFieldName(SerializableString name) throws IOException
     {
         // Object is a value, need to verify it's allowed
         if (_writeContext.writeFieldName(name.getValue()) == JsonWriteContext.STATUS_EXPECT_VALUE) {
             _reportError("Can not write a field name, expecting a value");
         }
-        _writeString(name.getValue());
+        byte[] raw = name.asUnquotedUTF8();
+        final int len = raw.length;
+        if (len == 0) {
+            _writeByte(BYTE_EMPTY_STRING);
+            return;
+        }
+        _writeLengthMarker(PREFIX_TYPE_TEXT, len);
+        _writeBytes(raw, 0, len);
     }
 
     @Override
-    public final void writeStringField(String fieldName, String value)
-        throws IOException
+    public final void writeStringField(String fieldName, String value) throws IOException
     {
         if (_writeContext.writeFieldName(fieldName) == JsonWriteContext.STATUS_EXPECT_VALUE) {
             _reportError("Can not write a field name, expecting a value");
         }
         _writeString(fieldName);
-        writeString(value);
+        // inlined from 'writeString()'
+        if (value == null) {
+            writeNull();
+            return;
+        }
+        _verifyValueWrite("write String value");
+        _writeString(value);
     }
     
     /*
