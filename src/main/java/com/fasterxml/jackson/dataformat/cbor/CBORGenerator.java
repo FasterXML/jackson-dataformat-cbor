@@ -112,6 +112,8 @@ public class CBORGenerator extends GeneratorBase
      * are enabled.
      */
     protected int _formatFeatures;
+
+    protected boolean _cfgMinimalInts;
     
     /*
     /**********************************************************
@@ -169,12 +171,13 @@ public class CBORGenerator extends GeneratorBase
     /* Life-cycle
     /**********************************************************
      */
-    
+
     public CBORGenerator(IOContext ctxt, int jsonFeatures, int formatFeatures,
             ObjectCodec codec, OutputStream out)
     {
         super(jsonFeatures, codec);
         _formatFeatures = formatFeatures;
+        _cfgMinimalInts = Feature.WRITE_MINIMAL_INTS.enabledIn(formatFeatures);
         _ioContext = ctxt;
         _out = out;
         _bufferRecyclable = true;
@@ -194,6 +197,7 @@ public class CBORGenerator extends GeneratorBase
     {
         super(jsonFeatures, codec);
         _formatFeatures = formatFeatures;
+        _cfgMinimalInts = Feature.WRITE_MINIMAL_INTS.enabledIn(formatFeatures);
         _ioContext = ctxt;
         _out = out;
         _bufferRecyclable = bufferRecyclable;
@@ -320,11 +324,17 @@ public class CBORGenerator extends GeneratorBase
 
     public CBORGenerator enable(Feature f) {
         _formatFeatures |= f.getMask();
+        if (f == Feature.WRITE_MINIMAL_INTS) {
+            _cfgMinimalInts = true;
+        }
         return this;
     }
 
     public CBORGenerator disable(Feature f) {
         _formatFeatures &= ~f.getMask();
+        if (f == Feature.WRITE_MINIMAL_INTS) {
+            _cfgMinimalInts = false;
+        }
         return this;
     }
 
@@ -594,13 +604,42 @@ public class CBORGenerator extends GeneratorBase
         } else {
             marker = PREFIX_TYPE_INT_POS;
         }
-        _writeInt(marker, i);
+
+        _ensureRoomForOutput(5);
+        byte b0;
+        if (_cfgMinimalInts) {
+            if (i < 24) {
+                _outputBuffer[_outputTail++] = (byte) (marker + i);
+                return;
+            }
+            if (i <= 0xFF) {
+                _outputBuffer[_outputTail++] = (byte) (marker + 24);
+                _outputBuffer[_outputTail++] = (byte) i;
+                return;
+            }
+            b0 = (byte) i;
+            i >>= 8;
+            if (i <= 0xFF) {
+                _outputBuffer[_outputTail++] = (byte) (marker + 25);
+                _outputBuffer[_outputTail++] = (byte) i;
+                _outputBuffer[_outputTail++] = b0;
+                return;
+            }
+        } else {
+            b0 = (byte) i;
+            i >>= 8;
+        }
+        _outputBuffer[_outputTail++] = (byte) (marker + 26);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+        _outputBuffer[_outputTail++] = b0;
     }
 
     @Override
     public void writeNumber(long l) throws IOException
     {
-        if (Feature.WRITE_MINIMAL_INTS.enabledIn(_formatFeatures)) {
+        if (_cfgMinimalInts) {
             // First: maybe 32 bits is enough?
             if (l <= MAX_INT_AS_LONG && l >= MIN_INT_AS_LONG) {
                 writeNumber((int) l);
@@ -712,12 +751,7 @@ public class CBORGenerator extends GeneratorBase
          */
         _writeByte(BYTE_TAG_BIGFLOAT);
         _writeByte(BYTE_ARRAY_2_ELEMENTS);
-                
 
-        /*
-        _writeInt32(PREFIX_TYPE_BYTES, len);
-        _writeBytes(data, 0, len);
-        */
         int scale = dec.scale();
         _writeIntValue(scale);
 
@@ -868,7 +902,7 @@ public class CBORGenerator extends GeneratorBase
         }
     }
     
-    protected void _writeString(char[] text, int offset, int len) throws IOException
+    protected final void _writeString(char[] text, int offset, int len) throws IOException
     {
         if (len <= MAX_SHORT_STRING_CHARS) { // possibly short strings (not necessarily)
             _ensureSpace(MAX_SHORT_STRING_BYTES); // can afford approximate length
@@ -1111,8 +1145,7 @@ public class CBORGenerator extends GeneratorBase
     /**********************************************************
     */
 
-    private final void _ensureRoomForOutput(int needed) throws IOException
-    {
+    private final void _ensureRoomForOutput(int needed) throws IOException {
         if ((_outputTail + needed) >= _outputEnd) {
             _flushBuffer();
         }        
@@ -1179,40 +1212,7 @@ public class CBORGenerator extends GeneratorBase
         _outputBuffer[_outputTail++] = (byte) i;
         _outputBuffer[_outputTail++] = b0;
     }
-    
-    private final void _writeInt(int majorType, int i) throws IOException
-    {
-        _ensureRoomForOutput(5);
-        byte b0;
-        if (Feature.WRITE_MINIMAL_INTS.enabledIn(_formatFeatures)) {
-            if (i < 24) {
-                _outputBuffer[_outputTail++] = (byte) (majorType + i);
-                return;
-            }
-            if (i <= 0xFF) {
-                _outputBuffer[_outputTail++] = (byte) (majorType + 24);
-                _outputBuffer[_outputTail++] = (byte) i;
-                return;
-            }
-            b0 = (byte) i;
-            i >>= 8;
-            if (i <= 0xFF) {
-                _outputBuffer[_outputTail++] = (byte) (majorType + 25);
-                _outputBuffer[_outputTail++] = (byte) i;
-                _outputBuffer[_outputTail++] = b0;
-                return;
-            }
-        } else {
-            b0 = (byte) i;
-            i >>= 8;
-        }
-        _outputBuffer[_outputTail++] = (byte) (majorType + 26);
-        _outputBuffer[_outputTail++] = (byte) (i >> 16);
-        _outputBuffer[_outputTail++] = (byte) (i >> 8);
-        _outputBuffer[_outputTail++] = (byte) i;
-        _outputBuffer[_outputTail++] = b0;
-    }
-    
+
     private final void _writeByte(byte b) throws IOException
     {
         if (_outputTail >= _outputEnd) {
