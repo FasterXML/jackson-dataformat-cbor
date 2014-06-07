@@ -55,18 +55,18 @@ abstract class CBORTestBase
         return cborDoc(cborFactory(), json);
     }
 
-    protected byte[] cborDoc(CBORFactory smileFactory, String json) throws IOException
+    protected byte[] cborDoc(CBORFactory cborF, String json) throws IOException
     {
         JsonFactory jf = new JsonFactory();
         JsonParser jp = jf.createParser(json);
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        JsonGenerator jg = cborGenerator(out);
+        ByteArrayOutputStream out = new ByteArrayOutputStream(json.length());
+        JsonGenerator dest = cborF.createGenerator(out);
     	
         while (jp.nextToken() != null) {
-            jg.copyCurrentEvent(jp);
+        	dest.copyCurrentEvent(jp);
         }
         jp.close();
-        jg.close();
+        dest.close();
         return out.toByteArray();
     }
 
