@@ -47,6 +47,18 @@ public class CBORGenerator extends GeneratorBase
          * for <code>int</code>, 8-byte for <code>long</code> and so on).
          */
         WRITE_MINIMAL_INTS(true),
+        
+        /**
+         * Feature that determines whether CBOR "Self-Describe Tag" (value 55799,
+         * encoded as 3-byte sequence of <code>0xD9, 0xD9, 0xF7</code>) should be written
+         * at the beginnig of document or not.
+         *<p>
+         * Default value is <code>false</code> meaning that type tag will not be written
+         * at the beginning of a new document.
+         *
+         * @since 2.5
+         */
+        WRITE_TYPE_HEADER(false),
         ;
 
         protected final boolean _defaultState;
@@ -353,7 +365,28 @@ public class CBORGenerator extends GeneratorBase
 
     /*
     /**********************************************************
-    /* Extended API, other
+    /* Extended API, CBOR-specific encoded output
+    /**********************************************************
+     */
+
+    /**
+     * Method for writing out an explicit CBOR Tag.
+     * 
+     * @param tagId Positive integer (0 or higher)
+     * 
+     * @since 2.5
+     */
+    public void writeTag(int tagId) throws IOException
+    {
+        if (tagId < 0) {
+            throw new IllegalArgumentException("Can not write negative tag ids ("+tagId+")");
+        }
+        _writeLengthMarker(PREFIX_TYPE_TAG, tagId);
+    }
+    
+    /*
+    /**********************************************************
+    /* Extended API, raw bytes (by-passing encoder)
     /**********************************************************
      */
 

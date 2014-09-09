@@ -40,6 +40,18 @@ public final class CBORConstants
     public final static int SUFFIX_INDEFINITE = 0x1F;
 
     public final static int MASK_MAJOR_TYPE = 0xE0;
+
+    /*
+    /**********************************************************
+    /* Well-known Tag Ids
+    /**********************************************************
+     */
+
+    /**
+     * As per spec, this is a sort of "nop" tag, useful as marker
+     * for the very first root-level data item.
+     */
+    public final static int TAG_ID_SELF_DESCRIBE = 55799;
     
     /*
     /**********************************************************
