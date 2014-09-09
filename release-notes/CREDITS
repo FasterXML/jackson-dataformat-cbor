@@ -1,0 +1,9 @@
+Here are people who have contributed to development of this project
+(version numbers in brackets indicate release in which the problem was fixed)
+
+Tatu Saloranta, tatu.saloranta@iki.fi: author
+
+Clinton  Gormley clintongormley
+
+* Suggested [#5]: Support binary (byte[]) Object keys (assuming UTF-8 encoding)
+ (2.4.3)
