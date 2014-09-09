@@ -3,6 +3,7 @@ package com.fasterxml.jackson.dataformat.cbor;
 import java.io.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 
 import com.fasterxml.jackson.core.*;
@@ -53,6 +54,8 @@ public final class CBORParser extends ParserMinimalBase
         public boolean enabledByDefault() { return _defaultState; }
         public int getMask() { return _mask; }
     }
+
+    private final static Charset UTF8 = Charset.forName("UTF-8");
 
     private final static int[] NO_INTS = new int[0];
 
@@ -610,53 +613,61 @@ public final class CBORParser extends ParserMinimalBase
             }
         }
         int ch = _inputBuffer[_inputPtr++];
-        final int lowBits = ch & 0x1F;
+//        final int lowBits = ch & 0x1F;
         switch ((ch >> 5) & 0x7) {
         case 0: // positive int
             _numTypesValid = NR_INT;
-            if (lowBits <= 23) {
-                _numberInt = lowBits;
-            } else {
-                switch (lowBits - 24) {
-                case 0:
-                    _numberInt = _decode8Bits();
-                    break;
-                case 1:
-                    _numberInt = _decode16Bits();
-                    break;
-                case 2:
-                    _numberInt = _decode32Bits();
-                    break;
-                case 3:
-                    _numberLong = _decode64Bits();
-                    _numTypesValid = NR_LONG;
-                    break;
-                default:
-                    _invalidToken(ch);
+
+            {
+                final int lowBits = ch & 0x1F;
+                
+                if (lowBits <= 23) {
+                    _numberInt = lowBits;
+                } else {
+                    switch (lowBits - 24) {
+                    case 0:
+                        _numberInt = _decode8Bits();
+                        break;
+                    case 1:
+                        _numberInt = _decode16Bits();
+                        break;
+                    case 2:
+                        _numberInt = _decode32Bits();
+                        break;
+                    case 3:
+                        _numberLong = _decode64Bits();
+                        _numTypesValid = NR_LONG;
+                        break;
+                    default:
+                        _invalidToken(ch);
+                    }
                 }
             }
             return (_currToken = JsonToken.VALUE_NUMBER_INT);
         case 1: // negative int
             _numTypesValid = NR_INT;
-            if (lowBits <= 23) {
-                _numberInt = -lowBits - 1;
-            } else {
-                switch (lowBits - 24) {
-                case 0:
-                    _numberInt = -_decode8Bits() - 1;
-                    break;
-                case 1:
-                    _numberInt = -_decode16Bits() - 1;
-                    break;
-                case 2:
-                    _numberInt = -_decode32Bits() - 1;
-                    break;
-                case 3:
-                    _numberLong = -_decode64Bits() - 1L;
-                    _numTypesValid = NR_LONG;
-                    break;
-                default:
-                    _invalidToken(ch);
+            {
+                final int lowBits = ch & 0x1F;
+                if (lowBits <= 23) {
+                    _numberInt = -lowBits - 1;
+                } else {
+                    switch (lowBits - 24) {
+                    case 0:
+                        _numberInt = -_decode8Bits() - 1;
+                        break;
+                    case 1:
+                        _numberInt = -_decode16Bits() - 1;
+                        break;
+                    case 2:
+                        _numberInt = -_decode32Bits() - 1;
+                        break;
+                    case 3:
+                        _numberLong = -_decode64Bits() - 1L;
+                        _numTypesValid = NR_LONG;
+                        break;
+                    default:
+                        _invalidToken(ch);
+                    }
                 }
             }
             return (_currToken = JsonToken.VALUE_NUMBER_INT);
@@ -674,7 +685,7 @@ public final class CBORParser extends ParserMinimalBase
         case 4: // Array
             _currToken = JsonToken.START_ARRAY;
             {
-                int len = _decodeExplicitLength(lowBits);
+                int len = _decodeExplicitLength(ch & 0x1F);
                 _parsingContext = _parsingContext.createChildArrayContext(len);
             }
             return _currToken;
@@ -682,17 +693,17 @@ public final class CBORParser extends ParserMinimalBase
         case 5: // Object
             _currToken = JsonToken.START_OBJECT;
             {
-                int len = _decodeExplicitLength(lowBits);
+                int len = _decodeExplicitLength(ch & 0x1F);
                 _parsingContext = _parsingContext.createChildObjectContext(len);
             }
             return _currToken;
 
         case 6: // tag
-            _tagValue = Integer.valueOf(_decodeTag(lowBits));
+            _tagValue = Integer.valueOf(_decodeTag(ch & 0x1F));
             return nextToken();
             
         default: // misc: tokens, floats
-            switch (lowBits) {
+            switch (ch & 0x1F) {
             case 20:
                 return (_currToken = JsonToken.VALUE_FALSE);
             case 21:
@@ -1343,7 +1354,7 @@ public final class CBORParser extends ParserMinimalBase
         // Either String or byte[]
         if (type != CBORConstants.MAJOR_TYPE_TEXT) {
             if (type == CBORConstants.MAJOR_TYPE_BYTES) {
-                _finishBytes(_decodeExplicitLength(ch));
+                _binaryValue = _finishBytes(_decodeExplicitLength(ch));
                 return;
             }
             // should never happen so
@@ -1647,23 +1658,23 @@ public final class CBORParser extends ParserMinimalBase
     }
     
     @SuppressWarnings("resource")
-    protected void _finishBytes(int len) throws IOException
+    protected byte[] _finishBytes(int len) throws IOException
     {
         // First, simple: non-chunked
         if (len >= 0) {
-            _binaryValue = new byte[len];
+            byte[] b = new byte[len];
             if (_inputPtr >= _inputEnd) {
                 loadMoreGuaranteed();
             }
             int ptr = 0;
             while (true) {
                 int toAdd = Math.min(len, _inputEnd - _inputPtr);
-                System.arraycopy(_inputBuffer, _inputPtr, _binaryValue, ptr, toAdd);
+                System.arraycopy(_inputBuffer, _inputPtr, b, ptr, toAdd);
                 _inputPtr += toAdd;
                 ptr += toAdd;
                 len -= toAdd;
                 if (len <= 0) {
-                    return;
+                    return b;
                 }
                 loadMoreGuaranteed();
             }
@@ -1701,7 +1712,7 @@ public final class CBORParser extends ParserMinimalBase
                 len -= count;
             }
         }
-        _binaryValue = bb.toByteArray();
+        return bb.toByteArray();
     }
     
     protected final JsonToken _decodeFieldName() throws IOException
@@ -1712,7 +1723,7 @@ public final class CBORParser extends ParserMinimalBase
         final int ch = _inputBuffer[_inputPtr++];
         final int type = ((ch >> 5) & 0x7);
 
-        // Expecting a String, but let's allow int numbers too
+        // Expecting a String, but may need to allow other types too
         if (type != CBORConstants.MAJOR_TYPE_TEXT) { // the usual case
             if (ch == -1) {
                 if (!_parsingContext.hasExpectedLength()) {
@@ -1721,6 +1732,7 @@ public final class CBORParser extends ParserMinimalBase
                 }
                 _reportUnexpectedBreak();
             }
+            // offline non-String cases, as they are expected to be rare
             _decodeNonStringName(ch);
             return JsonToken.FIELD_NAME;
         }
@@ -1853,6 +1865,15 @@ public final class CBORParser extends ParserMinimalBase
             name = _numberToName(ch, false);
         } else if (type == CBORConstants.MAJOR_TYPE_INT_NEG) {
             name = _numberToName(ch, true);
+        } else if (type == CBORConstants.MAJOR_TYPE_BYTES) {
+            /* 08-Sep-2014, tatu: As per [Issue#5], there are codecs
+             *   (f.ex. Perl module "CBOR::XS") that use Binary data...
+             */
+            final int blen = _decodeExplicitLength(ch & 0x1F);
+            byte[] b = _finishBytes(blen);
+            // TODO: Optimize, if this becomes commonly used & bottleneck; we have
+            //  more optimized UTF-8 codecs available.
+            name = new String(b, UTF8);
         } else {
             if ((ch & 0xFF) == CBORConstants.INT_BREAK) {
                 _reportUnexpectedBreak();
