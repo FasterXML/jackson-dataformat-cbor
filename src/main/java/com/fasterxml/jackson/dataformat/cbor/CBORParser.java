@@ -216,7 +216,7 @@ public final class CBORParser extends ParserMinimalBase
      * We will keep track of tag value for possible future use.
      */
     protected int _tagValue = -1;
-    
+
     /*
     /**********************************************************
     /* Input source config, state (from ex StreamBasedParserBase)
@@ -414,10 +414,28 @@ public final class CBORParser extends ParserMinimalBase
     public Version version() {
         return PackageVersion.VERSION;
     }
+
+    /*
+    /**********************************************************
+    /* Extended API
+    /**********************************************************
+     */
+
+    /**
+     * Method that can be used to access tag id associated with
+     * the most recently decoded value (whether completely, for
+     * scalar values, or partially, for Objects/Arrays), if any.
+     * If no tag was associated with it, -1 is returned.
+     * 
+     * @since 2.5
+     */
+    public int getCurrentTag() {
+        return _tagValue;
+    }
     
     /*
     /**********************************************************
-    /* Former StreamBasedParserBase methods
+    /* Abstract impls
     /**********************************************************
      */
 
@@ -573,7 +591,6 @@ public final class CBORParser extends ParserMinimalBase
     public JsonToken nextToken() throws IOException
     {
         _numTypesValid = NR_UNKNOWN;
-        _tagValue = -1;
         // For longer tokens (text, binary), we'll only read when requested
         if (_tokenIncomplete) {
             _skipIncomplete();
@@ -588,6 +605,7 @@ public final class CBORParser extends ParserMinimalBase
          */
         if (_parsingContext.inObject()) {
             if (_currToken != JsonToken.FIELD_NAME) {
+                _tagValue = -1;
                 // completed the whole Object?
                 if (!_parsingContext.expectMoreValues()) {
                     _parsingContext = _parsingContext.getParent();
@@ -597,77 +615,80 @@ public final class CBORParser extends ParserMinimalBase
             }
         } else {
             if (!_parsingContext.expectMoreValues()) {
+                _tagValue = -1;
                 _parsingContext = _parsingContext.getParent();
                 return (_currToken = JsonToken.END_ARRAY);
             }
         }
         if (_inputPtr >= _inputEnd) {
             if (!loadMore()) {
-                _handleEOF();
-                /* NOTE: here we can and should close input, release buffers,
-                 * since this is "hard" EOF, not a boundary imposed by
-                 * header token.
-                 */
-                close();
-                return (_currToken = null);
+                return _handleCBOREOF();
             }
         }
         int ch = _inputBuffer[_inputPtr++];
-//        final int lowBits = ch & 0x1F;
-        switch ((ch >> 5) & 0x7) {
+        int type = (ch >> 5) & 0x7;
+
+        // One special case: need to consider tag as prefix first:
+        if (type == 6) {
+            _tagValue = Integer.valueOf(_decodeTag(ch & 0x1F));
+            if (_inputPtr >= _inputEnd) {
+                if (!loadMore()) {
+                    return _handleCBOREOF();
+                }
+            }
+            ch = _inputBuffer[_inputPtr++];
+            type = (ch >> 5) & 0x7;
+        } else {
+            _tagValue = -1;
+        }
+        
+        final int lowBits = ch & 0x1F;
+        switch (type) {
         case 0: // positive int
             _numTypesValid = NR_INT;
-
-            {
-                final int lowBits = ch & 0x1F;
-                
-                if (lowBits <= 23) {
-                    _numberInt = lowBits;
-                } else {
-                    switch (lowBits - 24) {
-                    case 0:
-                        _numberInt = _decode8Bits();
-                        break;
-                    case 1:
-                        _numberInt = _decode16Bits();
-                        break;
-                    case 2:
-                        _numberInt = _decode32Bits();
-                        break;
-                    case 3:
-                        _numberLong = _decode64Bits();
-                        _numTypesValid = NR_LONG;
-                        break;
-                    default:
-                        _invalidToken(ch);
-                    }
+            if (lowBits <= 23) {
+                _numberInt = lowBits;
+            } else {
+                switch (lowBits - 24) {
+                case 0:
+                    _numberInt = _decode8Bits();
+                    break;
+                case 1:
+                    _numberInt = _decode16Bits();
+                    break;
+                case 2:
+                    _numberInt = _decode32Bits();
+                    break;
+                case 3:
+                    _numberLong = _decode64Bits();
+                    _numTypesValid = NR_LONG;
+                    break;
+                default:
+                    _invalidToken(ch);
                 }
             }
             return (_currToken = JsonToken.VALUE_NUMBER_INT);
         case 1: // negative int
             _numTypesValid = NR_INT;
-            {
-                final int lowBits = ch & 0x1F;
-                if (lowBits <= 23) {
-                    _numberInt = -lowBits - 1;
-                } else {
-                    switch (lowBits - 24) {
-                    case 0:
-                        _numberInt = -_decode8Bits() - 1;
-                        break;
-                    case 1:
-                        _numberInt = -_decode16Bits() - 1;
-                        break;
-                    case 2:
-                        _numberInt = -_decode32Bits() - 1;
-                        break;
-                    case 3:
-                        _numberLong = -_decode64Bits() - 1L;
-                        _numTypesValid = NR_LONG;
-                        break;
-                    default:
-                        _invalidToken(ch);
-                    }
+            if (lowBits <= 23) {
+                _numberInt = -lowBits - 1;
+            } else {
+                switch (lowBits - 24) {
+                case 0:
+                    _numberInt = -_decode8Bits() - 1;
+                    break;
+                case 1:
+                    _numberInt = -_decode16Bits() - 1;
+                    break;
+                case 2:
+                    _numberInt = -_decode32Bits() - 1;
+                    break;
+                case 3:
+                    _numberLong = -_decode64Bits() - 1L;
+                    _numTypesValid = NR_LONG;
+                    break;
+                default:
+                    _invalidToken(ch);
                 }
             }
             return (_currToken = JsonToken.VALUE_NUMBER_INT);
@@ -685,7 +706,7 @@ public final class CBORParser extends ParserMinimalBase
         case 4: // Array
             _currToken = JsonToken.START_ARRAY;
             {
-                int len = _decodeExplicitLength(ch & 0x1F);
+                int len = _decodeExplicitLength(lowBits);
                 _parsingContext = _parsingContext.createChildArrayContext(len);
             }
             return _currToken;
@@ -693,17 +714,16 @@ public final class CBORParser extends ParserMinimalBase
         case 5: // Object
             _currToken = JsonToken.START_OBJECT;
             {
-                int len = _decodeExplicitLength(ch & 0x1F);
+                int len = _decodeExplicitLength(lowBits);
                 _parsingContext = _parsingContext.createChildObjectContext(len);
             }
             return _currToken;
 
-        case 6: // tag
-            _tagValue = Integer.valueOf(_decodeTag(ch & 0x1F));
-            return nextToken();
+        case 6: // another tag; not allowed
+            _reportError("Multiple tags not allowed per value (first tag: "+_tagValue+")");
             
         default: // misc: tokens, floats
-            switch (ch & 0x1F) {
+            switch (lowBits) {
             case 20:
                 return (_currToken = JsonToken.VALUE_FALSE);
             case 21:
@@ -744,6 +764,16 @@ public final class CBORParser extends ParserMinimalBase
         return null;
     }
 
+    protected JsonToken _handleCBOREOF() throws IOException {
+        /* NOTE: here we can and should close input, release buffers,
+         * since this is "hard" EOF, not a boundary imposed by
+         * header token.
+         */
+        _tagValue = -1;
+        close();
+        return (_currToken = null);
+    }
+    
     protected String _numberToName(int ch, boolean neg) throws IOException
     {
         final int lowBits = ch & 0x1F;

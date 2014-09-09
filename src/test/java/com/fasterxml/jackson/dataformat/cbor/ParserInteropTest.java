@@ -8,6 +8,13 @@ import com.fasterxml.jackson.core.*;
  */
 public class ParserInteropTest extends CBORTestBase
 {
+    private final static byte[] SELF_DESC_PLUS_TRUE = new byte[] {
+        (byte) 0xD9,
+        (byte) 0xD9,
+        (byte) 0xF7,
+        CBORConstants.BYTE_TRUE
+    };
+
     // for [Issue#5]; Perl CBOR::XS module uses binary encoding for
     // Map/Object keys; presumably in UTF-8.
     public void testBinaryEncodedKeys() throws Exception
@@ -24,7 +31,22 @@ public class ParserInteropTest extends CBORTestBase
         assertToken(JsonToken.END_OBJECT, p.nextToken());
 
         assertNull(p.nextToken());
-        
         p.close();
     }
+
+    // for [Issue#6]: should be fine to have self-desc tag in general
+    public void testSelfDescribeTag() throws Exception
+    {
+        CBORParser p = cborParser(SELF_DESC_PLUS_TRUE);
+        
+        assertEquals(-1, p.getCurrentTag());
+
+        assertToken(JsonToken.VALUE_TRUE, p.nextToken());
+        assertEquals(CBORConstants.TAG_ID_SELF_DESCRIBE, p.getCurrentTag());
+
+        assertNull(p.nextToken());
+        assertEquals(-1, p.getCurrentTag());
+
+        p.close();
+}
 }
