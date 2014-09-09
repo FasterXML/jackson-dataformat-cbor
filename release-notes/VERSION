@@ -1,11 +1,16 @@
 Project: jackson-dataformat-cbor
-Version: 2.3.4 (17-Jul-2014)
+Version: 2.3.5 (xx-xxx-xxxx)
 
-No functional changes.
+#5: Support use of binary (byte[]) values for keys, assuming UTF-8 encoding
+ (suggested by clintongormley@github)
 
 ------------------------------------------------------------------------
 === History: ===
 ------------------------------------------------------------------------
+
+2.3.4 (17-Jul-2014)
+
+No functional changes.
 
 2.3.3 (10-Apr-2014)
 

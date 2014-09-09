@@ -85,7 +85,7 @@ public final class CBORConstants
     /* Basic UTF-8 decode/encode table
     /**********************************************************
      */
-    
+
     /**
      * Additionally we can combine UTF-8 decoding info into similar
      * data table.
