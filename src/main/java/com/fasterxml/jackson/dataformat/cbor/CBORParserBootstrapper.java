@@ -85,8 +85,8 @@ public class CBORParserBootstrapper
             ObjectCodec codec, BytesToNameCanonicalizer rootByteSymbols)
         throws IOException, JsonParseException
     {
-    	// Replace with non-deprecated method in 2.5; leave this for 2.4 for improved
-    	// backwards compatibility
+        // Replace with non-deprecated method in 2.5; leave this for 2.4 for improved
+        // backwards compatibility
         BytesToNameCanonicalizer can = rootByteSymbols.makeChild(true, internNames);
         // We just need a single byte to recognize possible "empty" document.
         ensureLoaded(1);
@@ -135,8 +135,7 @@ public class CBORParserBootstrapper
                 // other types; unlikely but can't exactly rule out
                 return MatchStrength.INCONCLUSIVE;
             }
-        }
-        if (b == CBORConstants.BYTE_ARRAY_INDEFINITE) {
+        } else if (b == CBORConstants.BYTE_ARRAY_INDEFINITE) {
             if (acc.hasMoreBytes()) {
                 b = acc.nextByte();
                 if (b == CBORConstants.BYTE_BREAK) {
@@ -145,11 +144,30 @@ public class CBORParserBootstrapper
                 // all kinds of types are possible, so let's just acknowledge it as possible:
                 return MatchStrength.WEAK_MATCH;
             }
-        }
+        } else if (CBORConstants.hasMajorType(CBORConstants.MAJOR_TYPE_TAG, b)) {
+
+            // Actually, specific "self-describe tag" is a very good indicator
+            // (see [Issue#6]
+            if (b == (byte) 0xD9) {
+                if (acc.hasMoreBytes()) {
+                    b = acc.nextByte();
+                    if (b == (byte) 0xD9) {
+                        if (acc.hasMoreBytes()) {
+                            b = acc.nextByte();
+                            if (b == (byte) 0xF7) {
+                                return MatchStrength.FULL_MATCH;
+                            }
+                        }
+                    }
+                }
+            }
+            // As to other tags, possible. May want to add other "well-known" (commonly
+            // used ones for root value) tags for 'solid' match in future.
+            return MatchStrength.WEAK_MATCH;
 
         // Other types; the only one where there's significant checking possibility
         // is in last, "misc" category
-        if (CBORConstants.hasMajorType(CBORConstants.MAJOR_TYPE_MISC, b)) {
+        } else if (CBORConstants.hasMajorType(CBORConstants.MAJOR_TYPE_MISC, b)) {
             if ((b == CBORConstants.BYTE_FALSE)
                     || (b == CBORConstants.BYTE_TRUE)
                     || (b == CBORConstants.BYTE_NULL)) {

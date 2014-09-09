@@ -129,7 +129,7 @@ public final class CBORConstants
     }
 
     public static boolean hasMajorType(int expType, byte encoded) {
-        int actual = (encoded & MASK_MAJOR_TYPE) >> 3;
+        int actual = (encoded & MASK_MAJOR_TYPE) >> 5;
         return (actual == expType);
     }
 }

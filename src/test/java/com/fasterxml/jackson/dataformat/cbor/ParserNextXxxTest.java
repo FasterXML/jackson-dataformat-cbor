@@ -25,7 +25,7 @@ public class ParserNextXxxTest extends CBORTestBase
         JsonGenerator g = f.createGenerator(bytes);
         for (int i = 0; i < TESTROUNDS; ++i) {
             g.writeStartObject();
-        	g.writeNumberField("fieldName", 1);
+            g.writeNumberField("fieldName", 1);
             g.writeEndObject();
         }
         g.close();
