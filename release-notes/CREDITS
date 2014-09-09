@@ -7,3 +7,5 @@ Clinton  Gormley clintongormley
 
 * Suggested [#5]: Support binary (byte[]) Object keys (assuming UTF-8 encoding)
  (2.4.3)
+* Suggested [#6]: Support 'self-describe' CBOR tag
+ (2.4.3)

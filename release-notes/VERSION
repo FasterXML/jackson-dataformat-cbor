@@ -3,6 +3,8 @@ Version: 2.4.2 (15-Aug-2014)
 
 #5: Support binary (byte[]) Object keys (assuming UTF-8 encoding)
   (suggested by Clinton G, clintongormley@github)
+#6: Support 'self-describe' CBOR tag
+  (suggested by Clinton G, clintongormley@github)
 
 ------------------------------------------------------------------------
 === History: ===

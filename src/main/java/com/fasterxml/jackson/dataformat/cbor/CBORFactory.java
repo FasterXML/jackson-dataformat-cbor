@@ -264,6 +264,7 @@ public class CBORFactory extends JsonFactory
     /**********************************************************
      */
 
+    @SuppressWarnings("resource")
     @Override
     public CBORParser createParser(File f) throws IOException {
         return _createParser(new FileInputStream(f), _createContext(f, true));
@@ -283,7 +284,7 @@ public class CBORFactory extends JsonFactory
     public CBORParser createParser(byte[] data) throws IOException {
         return _createParser(data, 0, data.length, _createContext(data, true));
     }
-    
+
     @Override
     public CBORParser createParser(byte[] data, int offset, int len) throws IOException {
         return _createParser(data, offset, len, _createContext(data, true));
@@ -304,9 +305,8 @@ public class CBORFactory extends JsonFactory
      */
     @Override
     public CBORGenerator createGenerator(OutputStream out, JsonEncoding enc) throws IOException {
-        // false -> we won't manage the stream unless explicitly directed to
-        return new CBORGenerator(_createContext(out, false),
-        		_generatorFeatures, _formatGeneratorFeatures, _objectCodec, out);
+        return _createCBORGenerator(_createContext(out, false),
+                _generatorFeatures, _formatGeneratorFeatures, _objectCodec, out);
     }
 
     /**
@@ -318,9 +318,8 @@ public class CBORFactory extends JsonFactory
      */
     @Override
     public CBORGenerator createGenerator(OutputStream out) throws IOException {
-    	// false -> we won't manage the stream unless explicitly directed to
-        return new CBORGenerator(_createContext(out, false),
-        		_generatorFeatures, _formatGeneratorFeatures, _objectCodec, out);
+        return _createCBORGenerator(_createContext(out, false),
+                _generatorFeatures, _formatGeneratorFeatures, _objectCodec, out);
     }
 
     /*
@@ -334,13 +333,6 @@ public class CBORFactory extends JsonFactory
         return super._createContext(srcRef, resourceManaged);
     }
 
-    /*
-    @Override
-    public BufferRecycler _getBufferRecycler() {
-        return super._getBufferRecycler();
-    }
-    */
-    
     /**
      * Overridable factory method that actually instantiates desired
      * parser.
@@ -381,10 +373,6 @@ public class CBORFactory extends JsonFactory
                 _objectCodec, _rootByteSymbols);
     }
 
-    /**
-     * Overridable factory method that actually instantiates desired
-     * generator.
-     */
     @Override
     protected CBORGenerator _createGenerator(Writer out, IOContext ctxt) throws IOException {
         return _nonByteTarget();
@@ -392,7 +380,8 @@ public class CBORFactory extends JsonFactory
 
     @Override
     protected CBORGenerator _createUTF8Generator(OutputStream out, IOContext ctxt) throws IOException {
-        return new CBORGenerator(ctxt, _generatorFeatures, _formatGeneratorFeatures, _objectCodec, out);
+        return _createCBORGenerator(ctxt,
+                _generatorFeatures, _formatGeneratorFeatures, _objectCodec, out);
     }
 
     @Override
@@ -400,6 +389,17 @@ public class CBORFactory extends JsonFactory
         return _nonByteTarget();
     }
 
+    private final CBORGenerator _createCBORGenerator(IOContext ctxt,
+            int stdFeat, int formatFeat, ObjectCodec codec, OutputStream out) throws IOException
+    {
+        // false -> we won't manage the stream unless explicitly directed to
+        CBORGenerator gen = new CBORGenerator(ctxt, stdFeat, formatFeat, _objectCodec, out);
+        if (CBORGenerator.Feature.WRITE_TYPE_HEADER.enabledIn(formatFeat)) {
+            gen.writeTag(CBORConstants.TAG_ID_SELF_DESCRIBE);
+        }
+        return gen;
+    }
+    
     protected <T> T _nonByteTarget() {
         throw new UnsupportedOperationException("Can not create generator for non-byte-based target");
     }
