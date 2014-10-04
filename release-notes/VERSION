@@ -1,14 +1,18 @@
 Project: jackson-dataformat-cbor
-Version: 2.4.2 (15-Aug-2014)
+Version: 2.4.3 (04-Oct-2014)
+
+No changes.
+
+------------------------------------------------------------------------
+=== History: ===
+------------------------------------------------------------------------
+
+2.4.2 (15-Aug-2014)
 
 #5: Support binary (byte[]) Object keys (assuming UTF-8 encoding)
   (suggested by Clinton G, clintongormley@github)
 #6: Support 'self-describe' CBOR tag
   (suggested by Clinton G, clintongormley@github)
-
-------------------------------------------------------------------------
-=== History: ===
-------------------------------------------------------------------------
 
 2.4.1 (17-Jun-2014)
 
