@@ -22,10 +22,7 @@ public final class CBORParser extends ParserMinimalBase
      * Enumeration that defines all togglable features for CBOR generators.
      */
     public enum Feature {
-        /**
-         * Placeholder before any format-specific features are added.
-         */
-        BOGUS(false)
+//        BOGUS(false)
         ;
 
         final boolean _defaultState;
@@ -826,18 +823,54 @@ public final class CBORParser extends ParserMinimalBase
     /**********************************************************
      */
 
-    /*
     @Override
     public boolean nextFieldName(SerializableString str) throws IOException
     {
         // Two parsing modes; can only succeed if expecting field name, so handle that first:
         if (_parsingContext.inObject() && _currToken != JsonToken.FIELD_NAME) {
-            // ...
+            _tagValue = -1;
+            // completed the whole Object?
+            if (!_parsingContext.expectMoreValues()) {
+                _parsingContext = _parsingContext.getParent();
+                _currToken = JsonToken.END_OBJECT;
+                return false;
+            }
+        	byte[] nameBytes = str.asQuotedUTF8();
+            final int byteLen = nameBytes.length;
+            // fine; require room for up to 2-byte marker, data itself
+            int ptr = _inputPtr;
+            if ((ptr + byteLen + 1) < _inputEnd) {
+	            final int ch = _inputBuffer[ptr++];
+	            // only handle usual textual type
+	            if (((ch >> 5) & 0x7) == CBORConstants.MAJOR_TYPE_TEXT) { 
+		            int lenMarker = ch & 0x1F;
+		            if (lenMarker <= 24) {
+			            if (lenMarker == 23) {
+			            	lenMarker = _inputBuffer[ptr++] & 0xFF;
+			            }
+			            if (lenMarker == byteLen) {
+			            	int i = 0;
+			            	while (true) {
+			            		if (i == lenMarker) {
+		                            _inputPtr = ptr+i;
+		                            _parsingContext.setCurrentName(str.getValue());
+		                            _currToken = JsonToken.FIELD_NAME;
+		                            return true;
+			            		}
+			            		if (nameBytes[i] != _inputBuffer[ptr+i]) {
+			            			break;
+			            		}
+			            		++i;
+			            	}
+		            }
+	            }
+            }
+        }
+
         }
         // otherwise just fall back to default handling; should occur rarely
         return (nextToken() == JsonToken.FIELD_NAME) && str.getValue().equals(getCurrentName());
     }
-    */
 
     /*
     @Override

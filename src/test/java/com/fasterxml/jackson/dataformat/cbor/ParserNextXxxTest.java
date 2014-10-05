@@ -6,6 +6,7 @@ import java.util.Random;
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.io.SerializedString;
 
+// note: copied from test of same name from jackson-dataformat-smile
 public class ParserNextXxxTest extends CBORTestBase
 {
 	public void testIsNextTokenName() throws Exception

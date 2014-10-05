@@ -1,11 +1,15 @@
 Project: jackson-dataformat-cbor
-Version: 2.4.3 (04-Oct-2014)
+Version: 2.5.0 (xx-xxx-2014)
 
-No changes.
+#4: Implement `nextFieldName` efficiently
 
 ------------------------------------------------------------------------
 === History: ===
 ------------------------------------------------------------------------
+
+2.4.3 (04-Oct-2014)
+
+No changes since 2.4.2
 
 2.4.2 (15-Aug-2014)
 
