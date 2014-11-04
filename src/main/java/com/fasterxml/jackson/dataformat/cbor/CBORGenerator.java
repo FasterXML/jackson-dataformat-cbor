@@ -409,7 +409,7 @@ public class CBORGenerator extends GeneratorBase
     public void writeBytes(byte[] data, int offset, int len) throws IOException {
         _writeBytes(data, offset, len);
     }
-    
+
     /*
     /**********************************************************
     /* Output method implementations, structural
@@ -421,6 +421,29 @@ public class CBORGenerator extends GeneratorBase
     {
         _verifyValueWrite("start an array");
         _writeContext = _writeContext.createChildArrayContext();
+        _writeByte(BYTE_ARRAY_INDEFINITE);
+    }
+
+    // TODO: implement this for CBOR
+    /*
+     * Unlike with JSON, this method can use slightly optimized version
+     * since CBOR has a variant that allows embedding length in array
+     * start marker. But it mostly (or only?) makes sense for small
+     * arrays, cases where length marker fits within type marker byte;
+     * otherwise we might as well just use "indefinite" notation.
+     * 
+     * @since 2.4
+     */
+    @Override
+    public void writeStartArray(int size) throws IOException {
+        _verifyValueWrite("start an array");
+        _writeContext = _writeContext.createChildArrayContext();
+        /*
+        if (size >= 31 || size < 0) {
+            _writeByte(BYTE_ARRAY_INDEFINITE);
+        } else {
+        }
+        */
         _writeByte(BYTE_ARRAY_INDEFINITE);
     }
 
