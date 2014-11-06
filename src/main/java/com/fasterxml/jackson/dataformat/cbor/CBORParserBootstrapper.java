@@ -80,14 +80,12 @@ public class CBORParserBootstrapper
         _bufferRecyclable = false;
     }
 
-    public CBORParser constructParser(int generalParserFeatures, int formatFeatures,
-            boolean internNames,
+    public CBORParser constructParser(int factoryFeatures,
+            int generalParserFeatures, int formatFeatures,
             ObjectCodec codec, BytesToNameCanonicalizer rootByteSymbols)
         throws IOException, JsonParseException
     {
-        // Replace with non-deprecated method in 2.5; leave this for 2.4 for improved
-        // backwards compatibility
-        BytesToNameCanonicalizer can = rootByteSymbols.makeChild(true, internNames);
+        BytesToNameCanonicalizer can = rootByteSymbols.makeChild(factoryFeatures);
         // We just need a single byte to recognize possible "empty" document.
         ensureLoaded(1);
         CBORParser p = new CBORParser(_context, generalParserFeatures, formatFeatures,

@@ -160,7 +160,7 @@ public class CBORFactory extends JsonFactory
     /* Capability introspection
     /**********************************************************
      */
-    
+
     @Override
     public boolean canHandleBinaryNatively() {
         return true;
@@ -257,7 +257,7 @@ public class CBORFactory extends JsonFactory
     public final boolean isEnabled(CBORGenerator.Feature f) {
         return (_formatGeneratorFeatures & f.getMask()) != 0;
     }
-    
+
     /*
     /**********************************************************
     /* Overridden parser factory methods, new (2.1)
@@ -340,9 +340,9 @@ public class CBORFactory extends JsonFactory
     @Override
     protected CBORParser _createParser(InputStream in, IOContext ctxt) throws IOException
     {
-        return new CBORParserBootstrapper(ctxt, in).constructParser(_parserFeatures,
-        		_formatParserFeatures, isEnabled(JsonFactory.Feature.INTERN_FIELD_NAMES),
-        		_objectCodec, _rootByteSymbols);
+        return new CBORParserBootstrapper(ctxt, in).constructParser(_factoryFeatures,
+                _parserFeatures, _formatParserFeatures,
+                _objectCodec, _rootByteSymbols);
     }
 
     /**
@@ -368,8 +368,7 @@ public class CBORFactory extends JsonFactory
     protected CBORParser _createParser(byte[] data, int offset, int len, IOContext ctxt) throws IOException
     {
         return new CBORParserBootstrapper(ctxt, data, offset, len).constructParser(
-                _parserFeatures, _formatParserFeatures,
-                isEnabled(JsonFactory.Feature.INTERN_FIELD_NAMES),
+                _factoryFeatures, _parserFeatures, _formatParserFeatures,
                 _objectCodec, _rootByteSymbols);
     }
 

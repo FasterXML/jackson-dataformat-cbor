@@ -72,7 +72,7 @@ public final class CBORParser extends ParserMinimalBase
      * Codec used for data binding when (if) requested.
      */
     protected ObjectCodec _objectCodec;
-    
+
     /*
     /**********************************************************
     /* Generic I/O state
@@ -265,7 +265,7 @@ public final class CBORParser extends ParserMinimalBase
      * Helper variables used when dealing with chunked content.
      */
     private int _chunkLeft, _chunkEnd;
-    
+
     /*
     /**********************************************************
     /* Symbol handling, decoding
@@ -359,7 +359,7 @@ public final class CBORParser extends ParserMinimalBase
 
     protected BigInteger _numberBigInt;
     protected BigDecimal _numberBigDecimal;
-    
+
     /*
     /**********************************************************
     /* Life-cycle
@@ -429,7 +429,7 @@ public final class CBORParser extends ParserMinimalBase
     public int getCurrentTag() {
         return _tagValue;
     }
-    
+
     /*
     /**********************************************************
     /* Abstract impls
@@ -914,7 +914,7 @@ public final class CBORParser extends ParserMinimalBase
             return null;
         }
     }
-    
+
     /*
     /**********************************************************
     /* Public API, access to token information, text
@@ -1023,7 +1023,7 @@ public final class CBORParser extends ParserMinimalBase
         }
         return getText();
     }
-    
+
     /*
     /**********************************************************
     /* Public API, access to token information, binary
@@ -1104,7 +1104,7 @@ public final class CBORParser extends ParserMinimalBase
         _tokenIncomplete = false;
         return total;
     }
-    
+
     /*
     /**********************************************************
     /* Numeric accessors of public API
@@ -2448,7 +2448,7 @@ public final class CBORParser extends ParserMinimalBase
         }
         return ((c << 6) | (d & 0x3F)) - 0x10000;
     }
-    
+
     /*
     /**********************************************************
     /* Low-level reading, other
@@ -2524,7 +2524,7 @@ public final class CBORParser extends ParserMinimalBase
         }
         return _byteArrayBuilder;
     }
-    
+
     protected void _closeInput() throws IOException {
         if (_inputStream != null) {
             if (_ioContext.isResourceManaged() || isEnabled(JsonParser.Feature.AUTO_CLOSE_SOURCE)) {
