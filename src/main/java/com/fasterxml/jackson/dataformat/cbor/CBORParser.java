@@ -50,6 +50,7 @@ public final class CBORParser extends ParserMinimalBase
         
         public boolean enabledByDefault() { return _defaultState; }
         public int getMask() { return _mask; }
+        public boolean enabledIn(int flags) { return (flags & _mask) != 0; }
     }
 
     private final static Charset UTF8 = Charset.forName("UTF-8");
