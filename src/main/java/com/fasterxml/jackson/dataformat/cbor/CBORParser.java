@@ -829,6 +829,12 @@ public final class CBORParser extends ParserMinimalBase
     {
         // Two parsing modes; can only succeed if expecting field name, so handle that first:
         if (_parsingContext.inObject() && _currToken != JsonToken.FIELD_NAME) {
+            _numTypesValid = NR_UNKNOWN;
+            if (_tokenIncomplete) {
+                _skipIncomplete();
+            }
+            _tokenInputTotal = _currInputProcessed + _inputPtr;
+            _binaryValue = null;
             _tagValue = -1;
             // completed the whole Object?
             if (!_parsingContext.expectMoreValues()) {
@@ -836,7 +842,7 @@ public final class CBORParser extends ParserMinimalBase
                 _currToken = JsonToken.END_OBJECT;
                 return false;
             }
-        	byte[] nameBytes = str.asQuotedUTF8();
+            byte[] nameBytes = str.asQuotedUTF8();
             final int byteLen = nameBytes.length;
             // fine; require room for up to 2-byte marker, data itself
             int ptr = _inputPtr;
@@ -873,17 +879,102 @@ public final class CBORParser extends ParserMinimalBase
         return (nextToken() == JsonToken.FIELD_NAME) && str.getValue().equals(getCurrentName());
     }
 
-    /*
+    @Override
+    public String nextFieldName() throws IOException
+    {
+        if (_parsingContext.inObject() && _currToken != JsonToken.FIELD_NAME) {
+            _numTypesValid = NR_UNKNOWN;
+            if (_tokenIncomplete) {
+                _skipIncomplete();
+            }
+            _tokenInputTotal = _currInputProcessed + _inputPtr;
+            _binaryValue = null;
+            _tagValue = -1;
+            // completed the whole Object?
+            if (!_parsingContext.expectMoreValues()) {
+                _parsingContext = _parsingContext.getParent();
+                _currToken = JsonToken.END_OBJECT;
+                return null;
+            }
+            // inlined "_decodeFieldName()"
+
+            if (_inputPtr >= _inputEnd) {
+                loadMoreGuaranteed();
+            }
+            final int ch = _inputBuffer[_inputPtr++];
+            final int type = ((ch >> 5) & 0x7);
+
+            // offline non-String cases, as they are expected to be rare
+            if (type != CBORConstants.MAJOR_TYPE_TEXT) {
+                if (ch == -1) { // end-of-object, common
+                    if (!_parsingContext.hasExpectedLength()) {
+                        _parsingContext = _parsingContext.getParent();
+                        _currToken = JsonToken.END_OBJECT;
+                        return null;
+                    }
+                    _reportUnexpectedBreak();
+                }
+                _decodeNonStringName(ch);
+                _currToken = JsonToken.FIELD_NAME;
+                return getText();
+            }
+            final int lenMarker = ch & 0x1F;
+            String name;
+            if (lenMarker <= 23) {
+                if (lenMarker == 0) {
+                    name = "";
+                } else {
+                    Name n = _findDecodedFromSymbols(lenMarker);
+                    if (n != null) {
+                        name = n.getName();
+                        _inputPtr += lenMarker;
+                    } else {
+                        name = _decodeShortName(lenMarker);
+                        name = _addDecodedToSymbols(lenMarker, name);
+                    }
+                }
+            } else {
+                final int actualLen = _decodeExplicitLength(lenMarker);
+                if (actualLen < 0) {
+                    name = _decodeChunkedName();
+                } else {
+                    name = _decodeLongerName(actualLen);
+                }
+            }
+            _parsingContext.setCurrentName(name);
+            _currToken = JsonToken.FIELD_NAME;
+            return name;
+        }
+        // otherwise just fall back to default handling; should occur rarely
+        return (nextToken() == JsonToken.FIELD_NAME) ? getCurrentName() : null;
+    }
+    
     @Override
     public String nextTextValue() throws IOException
     {
         // can't get text value if expecting name, so
+        /*
         if (!_parsingContext.inObject() || _currToken == JsonToken.FIELD_NAME) {
+            _numTypesValid = NR_UNKNOWN;
+            if (_tokenIncomplete) {
+                _skipIncomplete();
+            }
+            _tokenInputTotal = _currInputProcessed + _inputPtr;
+            _binaryValue = null;
+            _tagValue = -1;
+
+            // completed the whole Object?
+            if (!_parsingContext.expectMoreValues()) {
+                _parsingContext = _parsingContext.getParent();
+                _currToken = JsonToken.END_OBJECT;
+                return null;
+            }
+            TODO
         }
+        */
         // otherwise fall back to generic handling:
         return (nextToken() == JsonToken.VALUE_STRING) ? getText() : null;
     }
-    */
 
     @Override
     public int nextIntValue(int defaultValue) throws IOException
