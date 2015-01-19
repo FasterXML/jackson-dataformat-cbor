@@ -952,26 +952,189 @@ public final class CBORParser extends ParserMinimalBase
     @Override
     public String nextTextValue() throws IOException
     {
-        // can't get text value if expecting name, so
-        /*
-        if (!_parsingContext.inObject() || _currToken == JsonToken.FIELD_NAME) {
-            _numTypesValid = NR_UNKNOWN;
-            if (_tokenIncomplete) {
-                _skipIncomplete();
-            }
-            _tokenInputTotal = _currInputProcessed + _inputPtr;
-            _binaryValue = null;
-            _tagValue = -1;
+        _numTypesValid = NR_UNKNOWN;
+        if (_tokenIncomplete) {
+            _skipIncomplete();
+        }
+        _tokenInputTotal = _currInputProcessed + _inputPtr;
+        _binaryValue = null;
+        _tagValue = -1;
 
-            // completed the whole Object?
-            if (!_parsingContext.expectMoreValues()) {
-                _parsingContext = _parsingContext.getParent();
-                _currToken = JsonToken.END_OBJECT;
+        if (_parsingContext.inObject()) {
+            if (_currToken != JsonToken.FIELD_NAME) {
+                _tagValue = -1;
+                // completed the whole Object?
+                if (!_parsingContext.expectMoreValues()) {
+                    _parsingContext = _parsingContext.getParent();
+                    _currToken = JsonToken.END_OBJECT;
+                    return null;
+                }
+                _currToken = _decodeFieldName();
                 return null;
             }
-            TODO
+        } else {
+            if (!_parsingContext.expectMoreValues()) {
+                _tagValue = -1;
+                _parsingContext = _parsingContext.getParent();
+                _currToken = JsonToken.END_ARRAY;
+                return null;
+            }
         }
-        */
+        if (_inputPtr >= _inputEnd) {
+            if (!loadMore()) {
+                _handleCBOREOF();
+                return null;
+            }
+        }
+        int ch = _inputBuffer[_inputPtr++];
+        int type = (ch >> 5) & 0x7;
+
+        // One special case: need to consider tag as prefix first:
+        if (type == 6) {
+            _tagValue = Integer.valueOf(_decodeTag(ch & 0x1F));
+            if (_inputPtr >= _inputEnd) {
+                if (!loadMore()) {
+                    _handleCBOREOF();
+                    return null;
+                }
+            }
+            ch = _inputBuffer[_inputPtr++];
+            type = (ch >> 5) & 0x7;
+        } else {
+            _tagValue = -1;
+        }
+        
+        final int lowBits = ch & 0x1F;
+        switch (type) {
+        case 0: // positive int
+            _numTypesValid = NR_INT;
+            if (lowBits <= 23) {
+                _numberInt = lowBits;
+            } else {
+                switch (lowBits - 24) {
+                case 0:
+                    _numberInt = _decode8Bits();
+                    break;
+                case 1:
+                    _numberInt = _decode16Bits();
+                    break;
+                case 2:
+                    _numberInt = _decode32Bits();
+                    break;
+                case 3:
+                    _numberLong = _decode64Bits();
+                    _numTypesValid = NR_LONG;
+                    break;
+                default:
+                    _invalidToken(ch);
+                }
+            }
+            _currToken = JsonToken.VALUE_NUMBER_INT;
+            return null;
+        case 1: // negative int
+            _numTypesValid = NR_INT;
+            if (lowBits <= 23) {
+                _numberInt = -lowBits - 1;
+            } else {
+                switch (lowBits - 24) {
+                case 0:
+                    _numberInt = -_decode8Bits() - 1;
+                    break;
+                case 1:
+                    _numberInt = -_decode16Bits() - 1;
+                    break;
+                case 2:
+                    _numberInt = -_decode32Bits() - 1;
+                    break;
+                case 3:
+                    _numberLong = -_decode64Bits() - 1L;
+                    _numTypesValid = NR_LONG;
+                    break;
+                default:
+                    _invalidToken(ch);
+                }
+            }
+            _currToken = JsonToken.VALUE_NUMBER_INT;
+            return null;
+
+        case 2: // byte[]
+            _typeByte = ch;
+            _tokenIncomplete = true;
+            _currToken = JsonToken.VALUE_EMBEDDED_OBJECT;
+            return null;
+
+        case 3: // String
+            _typeByte = ch;
+            _tokenIncomplete = true;
+            _currToken = JsonToken.VALUE_STRING;
+            _finishToken();
+            return _textBuffer.contentsAsString();
+
+        case 4: // Array
+            _currToken = JsonToken.START_ARRAY;
+            {
+                int len = _decodeExplicitLength(lowBits);
+                _parsingContext = _parsingContext.createChildArrayContext(len);
+            }
+            return null;
+
+        case 5: // Object
+            _currToken = JsonToken.START_OBJECT;
+            {
+                int len = _decodeExplicitLength(lowBits);
+                _parsingContext = _parsingContext.createChildObjectContext(len);
+            }
+            return null;
+
+        case 6: // another tag; not allowed
+            _reportError("Multiple tags not allowed per value (first tag: "+_tagValue+")");
+            
+        default: // misc: tokens, floats
+            switch (lowBits) {
+            case 20:
+                _currToken = JsonToken.VALUE_FALSE;
+                return null;
+            case 21:
+                _currToken = JsonToken.VALUE_TRUE;
+                return null;
+            case 22:
+                _currToken = JsonToken.VALUE_NULL;
+                return null;
+            case 25: // 16-bit float... 
+                // As per [http://stackoverflow.com/questions/5678432/decompressing-half-precision-floats-in-javascript]
+                {
+                    float f = (float) _decodeHalfSizeFloat();
+                    _numberDouble = (double) f;
+                    _numTypesValid = NR_DOUBLE;
+                }
+                _currToken = JsonToken.VALUE_NUMBER_FLOAT;
+                return null;
+            case 26: // Float32
+                {
+                    float f = Float.intBitsToFloat(_decode32Bits());
+                    _numberDouble = (double) f;
+                    _numTypesValid = NR_DOUBLE;
+                }
+                _currToken = JsonToken.VALUE_NUMBER_FLOAT;
+                return null;
+            case 27: // Float64
+                _numberDouble = Double.longBitsToDouble(_decode64Bits());
+                _numTypesValid = NR_DOUBLE;
+                _currToken = JsonToken.VALUE_NUMBER_FLOAT;
+                return null;
+            case 31: // Break
+                if (_parsingContext.inArray()) {
+                    if (!_parsingContext.hasExpectedLength()) {
+                        _parsingContext = _parsingContext.getParent();
+                        _currToken = JsonToken.END_ARRAY;
+                        return null;
+                    }
+                }
+                // Object end-marker can't occur here
+                _reportUnexpectedBreak();
+            }
+            _invalidToken(ch);
+        }
         // otherwise fall back to generic handling:
         return (nextToken() == JsonToken.VALUE_STRING) ? getText() : null;
     }
