@@ -1067,8 +1067,7 @@ public final class CBORParser extends ParserMinimalBase
             _typeByte = ch;
             _tokenIncomplete = true;
             _currToken = JsonToken.VALUE_STRING;
-            _finishToken();
-            return _textBuffer.contentsAsString();
+            return _finishTextToken(ch);
 
         case 4: // Array
             _currToken = JsonToken.START_ARRAY;
@@ -1185,13 +1184,15 @@ public final class CBORParser extends ParserMinimalBase
     @Override    
     public String getText() throws IOException
     {
+        JsonToken t = _currToken;
         if (_tokenIncomplete) {
-            _finishToken();
+            if (t == JsonToken.VALUE_STRING) {
+                return _finishTextToken(_typeByte);
+            }
         }
-        if (_currToken == JsonToken.VALUE_STRING) {
+        if (t == JsonToken.VALUE_STRING) {
             return _textBuffer.contentsAsString();
         }
-        JsonToken t = _currToken;
         if (t == null) { // null only before/after document
             return null;
         }
@@ -1703,6 +1704,46 @@ public final class CBORParser extends ParserMinimalBase
         _finishShortText(len);
     }
 
+    /**
+     * @since 2.6
+     */
+    protected String _finishTextToken(int ch) throws IOException
+    {
+        _tokenIncomplete = false;
+        final int type = ((ch >> 5) & 0x7);
+        ch &= 0x1F;
+
+        // sanity check
+        if (type != CBORConstants.MAJOR_TYPE_TEXT) {
+            // should never happen so
+            _throwInternal();
+        }
+
+        // String value, decode
+        final int len = _decodeExplicitLength(ch);
+
+        if (len <= 0) {
+            if (len == 0) {
+                _textBuffer.resetWithEmpty();
+                return "";
+            }
+            _finishChunkedText();
+            return _textBuffer.contentsAsString();
+        }
+        if (len > (_inputEnd - _inputPtr)) {
+            // or if not, could we read?
+            if (len >= _inputBuffer.length) {
+                // If not enough space, need handling similar to chunked
+                _finishLongText(len);
+                return _textBuffer.contentsAsString();
+            }
+            _loadToHaveAtLeast(len);
+        }
+        // offline for better optimization
+        _finishShortText(len);
+        return _textBuffer.contentsAsString();
+    }
+    
     private final void _finishShortText(int len) throws IOException
     {
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
@@ -2104,8 +2145,7 @@ public final class CBORParser extends ParserMinimalBase
             }
             outBuf[outPtr++] = (char) i;
             if (++inPtr == end) {
-                _textBuffer.setCurrentLength(outPtr);
-                return _textBuffer.contentsAsString();
+                return _textBuffer.setCurrentAndReturn(outPtr);
             }
         }
 
@@ -2140,8 +2180,7 @@ public final class CBORParser extends ParserMinimalBase
             }
             outBuf[outPtr++] = (char) i;
         }
-        _textBuffer.setCurrentLength(outPtr);
-        return _textBuffer.contentsAsString();
+        return _textBuffer.setCurrentAndReturn(outPtr);
     }
 
     private final String _decodeLongerName(int len) throws IOException
