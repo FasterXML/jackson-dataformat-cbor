@@ -1261,10 +1261,17 @@ public final class CBORParser extends ParserMinimalBase
     @Override
     public String getValueAsString() throws IOException
     {
-        if (_currToken != JsonToken.VALUE_STRING) {
-            if (_currToken == null || _currToken == JsonToken.VALUE_NULL || !_currToken.isScalarValue()) {
-                return null;
+        // inlined 'getText()' for common case of having String
+        if (_tokenIncomplete) {
+            if (_currToken == JsonToken.VALUE_STRING) {
+                return _finishTextToken(_typeByte);
             }
+        }
+        if (_currToken == JsonToken.VALUE_STRING) {
+            return _textBuffer.contentsAsString();
+        }
+        if (_currToken == null || _currToken == JsonToken.VALUE_NULL || !_currToken.isScalarValue()) {
+            return null;
         }
         return getText();
     }
