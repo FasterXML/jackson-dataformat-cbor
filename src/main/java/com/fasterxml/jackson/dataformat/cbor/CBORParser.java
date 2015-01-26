@@ -1294,7 +1294,7 @@ public final class CBORParser extends ParserMinimalBase
         }
         if (_currToken != JsonToken.VALUE_EMBEDDED_OBJECT ) {
             // TODO, maybe: support base64 for text?
-            _reportError("Current token ("+_currToken+") not VALUE_EMBEDDED_OBJECT, can not access as binary");
+            _reportError("Current token ("+getCurrentToken()+") not VALUE_EMBEDDED_OBJECT, can not access as binary");
         }
         return _binaryValue;
     }
@@ -1316,7 +1316,7 @@ public final class CBORParser extends ParserMinimalBase
     {
         if (_currToken != JsonToken.VALUE_EMBEDDED_OBJECT ) {
             // Todo, maybe: support base64 for text?
-            _reportError("Current token ("+_currToken+") not VALUE_EMBEDDED_OBJECT, can not access as binary");
+            _reportError("Current token ("+getCurrentToken()+") not VALUE_EMBEDDED_OBJECT, can not access as binary");
         }
         if (!_tokenIncomplete) { // someone already decoded or read
             if (_binaryValue == null) { // if this method called twice in a row
@@ -1525,7 +1525,7 @@ public final class CBORParser extends ParserMinimalBase
         if (_currToken == JsonToken.VALUE_NUMBER_INT || _currToken == JsonToken.VALUE_NUMBER_FLOAT) {
             return;
         }
-        _reportError("Current token ("+_currToken+") not numeric, can not use numeric value accessors");
+        _reportError("Current token ("+getCurrentToken()+") not numeric, can not use numeric value accessors");
     }
 
     protected void convertNumberToInt() throws IOException
@@ -1740,11 +1740,10 @@ public final class CBORParser extends ParserMinimalBase
             _loadToHaveAtLeast(len);
         }
         // offline for better optimization
-        _finishShortText(len);
-        return _textBuffer.contentsAsString();
+        return _finishShortText(len);
     }
     
-    private final void _finishShortText(int len) throws IOException
+    private final String _finishShortText(int len) throws IOException
     {
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
         if (outBuf.length < len) { // one minor complication
@@ -1754,26 +1753,22 @@ public final class CBORParser extends ParserMinimalBase
         int outPtr = 0;
         int inPtr = _inputPtr;
         _inputPtr += len;
-        final int[] codes = UTF8_UNIT_CODES;
         final byte[] inputBuf = _inputBuffer;
 
         // Let's actually do a tight loop for ASCII first:
         final int end = inPtr + len;
 
-        while (true) {
-            int i = inputBuf[inPtr] & 0xFF;
-            // tight(er) loop for ASCII
-            if (codes[i] != 0) {
-                break;
-            }
+        int i;
+        while ((i = inputBuf[inPtr]) >= 0) {
             outBuf[outPtr++] = (char) i;
             if (++inPtr == end) {
-                _textBuffer.setCurrentLength(outPtr);
-                return;
+                return _textBuffer.setCurrentAndReturn(outPtr);
             }
         }
+
+        final int[] codes = UTF8_UNIT_CODES;
         do {
-            int i = inputBuf[inPtr++] & 0xFF;
+            i = inputBuf[inPtr++] & 0xFF;
             switch (codes[i]) {
             case 0:
                 break;
@@ -1800,7 +1795,7 @@ public final class CBORParser extends ParserMinimalBase
             }
             outBuf[outPtr++] = (char) i;
         } while (inPtr < end);
-        _textBuffer.setCurrentLength(outPtr);
+        return _textBuffer.setCurrentAndReturn(outPtr);
     }
 
     private final void _finishLongText(int len) throws IOException
@@ -2519,11 +2514,11 @@ public final class CBORParser extends ParserMinimalBase
         case 3:
             long l = _decode64Bits();
             if (l < 0 || l > MAX_INT_L) {
-                throw _constructError("Illegal length for "+_currToken+": "+l);
+                throw _constructError("Illegal length for "+getCurrentToken()+": "+l);
             }
             return (int) l;
         }
-        throw _constructError("Invalid length for "+_currToken+": 0x"+Integer.toHexString(lowBits));
+        throw _constructError("Invalid length for "+getCurrentToken()+": 0x"+Integer.toHexString(lowBits));
     }
 
     private int _decodeChunkLength(int expType) throws IOException
