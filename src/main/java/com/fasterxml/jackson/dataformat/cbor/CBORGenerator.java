@@ -99,11 +99,6 @@ public class CBORGenerator extends GeneratorBase
      * be for encoding 64-character Strings.
      */
     private final static int MIN_BUFFER_LENGTH = (3 * 256) + 2;
-    
-    private final static int SURR1_FIRST = 0xD800;
-    private final static int SURR1_LAST = 0xDBFF;
-    private final static int SURR2_FIRST = 0xDC00;
-    private final static int SURR2_LAST = 0xDFFF;
 
     private final static long MIN_INT_AS_LONG = (long) Integer.MIN_VALUE;
     private final static long MAX_INT_AS_LONG = (long) Integer.MAX_VALUE;
