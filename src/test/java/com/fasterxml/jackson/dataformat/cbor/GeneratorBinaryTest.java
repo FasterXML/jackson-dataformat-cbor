@@ -21,7 +21,7 @@ import org.junit.rules.TemporaryFolder;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonToken;
 
-public class GeneratorLongBinaryTest
+public class GeneratorBinaryTest
 {
 	final static int SMALL_LENGTH = 100;
 	final static int LARGE_LENGTH = CBORGenerator.BYTE_BUFFER_FOR_OUTPUT + 500;
