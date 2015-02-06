@@ -6,7 +6,7 @@ import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.format.InputAccessor;
 import com.fasterxml.jackson.core.format.MatchStrength;
 import com.fasterxml.jackson.core.io.IOContext;
-import com.fasterxml.jackson.core.sym.BytesToNameCanonicalizer;
+import com.fasterxml.jackson.core.sym.ByteQuadsCanonicalizer;
 
 /**
  * Simple bootstrapper version used with CBOR format parser.
@@ -82,10 +82,10 @@ public class CBORParserBootstrapper
 
     public CBORParser constructParser(int factoryFeatures,
             int generalParserFeatures, int formatFeatures,
-            ObjectCodec codec, BytesToNameCanonicalizer rootByteSymbols)
+            ObjectCodec codec, ByteQuadsCanonicalizer rootByteSymbols)
         throws IOException, JsonParseException
     {
-        BytesToNameCanonicalizer can = rootByteSymbols.makeChild(factoryFeatures);
+        ByteQuadsCanonicalizer can = rootByteSymbols.makeChild(factoryFeatures);
         // We just need a single byte to recognize possible "empty" document.
         ensureLoaded(1);
         CBORParser p = new CBORParser(_context, generalParserFeatures, formatFeatures,

@@ -11,8 +11,7 @@ import com.fasterxml.jackson.core.base.ParserMinimalBase;
 import com.fasterxml.jackson.core.io.IOContext;
 import com.fasterxml.jackson.core.io.NumberInput;
 import com.fasterxml.jackson.core.json.DupDetector;
-import com.fasterxml.jackson.core.sym.BytesToNameCanonicalizer;
-import com.fasterxml.jackson.core.sym.Name;
+import com.fasterxml.jackson.core.sym.ByteQuadsCanonicalizer;
 import com.fasterxml.jackson.core.util.ByteArrayBuilder;
 import com.fasterxml.jackson.core.util.TextBuffer;
 
@@ -276,8 +275,8 @@ public final class CBORParser extends ParserMinimalBase
     /**
      * Symbol table that contains field names encountered so far
      */
-    final protected BytesToNameCanonicalizer _symbols;
-    
+    final protected ByteQuadsCanonicalizer _symbols;
+
     /**
      * Temporary buffer used for name parsing.
      */
@@ -368,8 +367,7 @@ public final class CBORParser extends ParserMinimalBase
      */
     
     public CBORParser(IOContext ctxt, int parserFeatures, int cborFeatures,
-            ObjectCodec codec,
-            BytesToNameCanonicalizer sym,
+            ObjectCodec codec, ByteQuadsCanonicalizer sym,
             InputStream in, byte[] inputBuffer, int start, int end,
             boolean bufferRecyclable)
     {
@@ -924,9 +922,8 @@ public final class CBORParser extends ParserMinimalBase
                 if (lenMarker == 0) {
                     name = "";
                 } else {
-                    Name n = _findDecodedFromSymbols(lenMarker);
-                    if (n != null) {
-                        name = n.getName();
+                    name = _findDecodedFromSymbols(lenMarker);
+                    if (name != null) {
                         _inputPtr += lenMarker;
                     } else {
                         name = _decodeShortName(lenMarker);
@@ -2103,9 +2100,8 @@ public final class CBORParser extends ParserMinimalBase
             if (lenMarker == 0) {
                 name = "";
             } else {
-                Name n = _findDecodedFromSymbols(lenMarker);
-                if (n != null) {
-                    name = n.getName();
+                name = _findDecodedFromSymbols(lenMarker);
+                if (name != null) {
                     _inputPtr += lenMarker;
                 } else {
                     name = _decodeShortName(lenMarker);
@@ -2197,12 +2193,12 @@ public final class CBORParser extends ParserMinimalBase
             }
             _loadToHaveAtLeast(len);
         }
-        Name n = _findDecodedFromSymbols(len);
-        if (n != null) {
+        String name = _findDecodedFromSymbols(len);
+        if (name != null) {
             _inputPtr += len;
-            return n.getName();
+            return name;
         }
-        String name = _decodeShortName(len);
+        name = _decodeShortName(len);
         return _addDecodedToSymbols(len, name);
     }
     
@@ -2242,7 +2238,7 @@ public final class CBORParser extends ParserMinimalBase
         _parsingContext.setCurrentName(name);
     }
     
-    private final Name _findDecodedFromSymbols(int len) throws IOException
+    private final String _findDecodedFromSymbols(int len) throws IOException
     {
         if ((_inputEnd - _inputPtr) < len) {
             _loadToHaveAtLeast(len);
@@ -2295,7 +2291,7 @@ public final class CBORParser extends ParserMinimalBase
     /**
      * Method for locating names longer than 8 bytes (in UTF-8)
      */
-    private final Name _findDecodedMedium(int len) throws IOException
+    private final String _findDecodedMedium(int len) throws IOException
     {
         // first, need enough buffer to store bytes as ints:
         {
@@ -2333,13 +2329,13 @@ public final class CBORParser extends ParserMinimalBase
 
     private final String _addDecodedToSymbols(int len, String name) {
         if (len < 5) {
-            return _symbols.addName(name, _quad1, 0).getName();
+            return _symbols.addName(name, _quad1);
         }
         if (len < 9) {
-            return _symbols.addName(name, _quad1, _quad2).getName();
+            return _symbols.addName(name, _quad1, _quad2);
         }
         int qlen = (len + 3) >> 2;
-        return _symbols.addName(name, _quadBuffer, qlen).getName();
+        return _symbols.addName(name, _quadBuffer, qlen);
     }
     
     private static int[] _growArrayTo(int[] arr, int minSize) {

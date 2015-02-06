@@ -342,7 +342,7 @@ public class CBORFactory extends JsonFactory
     {
         return new CBORParserBootstrapper(ctxt, in).constructParser(_factoryFeatures,
                 _parserFeatures, _formatParserFeatures,
-                _objectCodec, _rootByteSymbols);
+                _objectCodec, _byteSymbolCanonicalizer);
     }
 
     /**
@@ -369,7 +369,7 @@ public class CBORFactory extends JsonFactory
     {
         return new CBORParserBootstrapper(ctxt, data, offset, len).constructParser(
                 _factoryFeatures, _parserFeatures, _formatParserFeatures,
-                _objectCodec, _rootByteSymbols);
+                _objectCodec, _byteSymbolCanonicalizer);
     }
 
     @Override
