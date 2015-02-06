@@ -22,7 +22,7 @@ public class CBORGenerator extends GeneratorBase
      * Let's ensure that we have big enough output buffer because of
      * safety margins we need for UTF-8 encoding.
      */
-    private final static int BYTE_BUFFER_FOR_OUTPUT = 16000;
+    final static int BYTE_BUFFER_FOR_OUTPUT = 16000;
 
     /**
      * Longest char chunk we will output is chosen so that it is guaranteed to fit
@@ -1306,7 +1306,7 @@ public class CBORGenerator extends GeneratorBase
     {
         while (bytesLeft > 0) {
             int room = _outputEnd - _outputTail;
-            if (room < 0) {
+            if (room <= 0) {
                 _flushBuffer();
                 room = _outputEnd - _outputTail;
             }
