@@ -1,33 +1,21 @@
 package com.fasterxml.jackson.dataformat.cbor;
 
-import static org.junit.Assert.assertEquals;
-
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.rules.TemporaryFolder;
 
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonToken;
 
-public class GeneratorBinaryTest
+public class GeneratorBinaryTest //extends CBORTestBase
 {
 	final static int SMALL_LENGTH = 100;
 	final static int LARGE_LENGTH = CBORGenerator.BYTE_BUFFER_FOR_OUTPUT + 500;
 
-	 @Rule
-	 public TemporaryFolder tempFolder = new TemporaryFolder();
+	@Rule
+	public TemporaryFolder tempFolder = new TemporaryFolder();
 
 	private File binaryInputFile;
 	private File cborFile;
@@ -41,141 +29,82 @@ public class GeneratorBinaryTest
 		 binaryOutputFile = tempFolder.newFile("outputData.bin");
 	}
 
-	private void generateInputFile(File binaryInputFile, int fileSize) throws NoSuchAlgorithmException, IOException
+	@Test
+	public void testSmallByteArray() throws Exception
+     {
+         testEncodeAndDecodeBytes(SMALL_LENGTH);
+     }
+
+	@Test
+	public void testLargeByteArray() throws Exception
+     {
+         testEncodeAndDecodeBytes(LARGE_LENGTH);
+     }
+	
+	private void generateInputFile(File input, int fileSize) throws NoSuchAlgorithmException, IOException
 	{
-		BufferedOutputStream os = null;
-		try
-		{
-			os = new BufferedOutputStream(new FileOutputStream(binaryInputFile));
-			SecureRandom sr = SecureRandom.getInstance("SHA1PRNG");
-			byte[] temp = new byte[1024];
-			int remaining = fileSize;
-			while (remaining > 0)
-			{
-				sr.nextBytes(temp);
-				os.write(temp, 0, Math.min(temp.length, remaining));
-				remaining -= temp.length;
-			}
-		}
-		finally
-		{
-			if (os != null)
-			{
-				os.close();
-			}
-		}
+	    OutputStream os = new BufferedOutputStream(new FileOutputStream(input));
+	    SecureRandom sr = SecureRandom.getInstance("SHA1PRNG");
+	    byte[] temp = new byte[1024];
+	    int remaining = fileSize;
+	    while (remaining > 0) {
+	        sr.nextBytes(temp);
+	        os.write(temp, 0, Math.min(temp.length, remaining));
+	        remaining -= temp.length;
+	    }
+	    os.close();
 	}
 
 	private void testEncodeAndDecodeBytes(int length) throws NoSuchAlgorithmException, IOException
 	{
-		generateInputFile(this.binaryInputFile, length);
-		encodeInCBOR(this.binaryInputFile, this.cborFile);
+		generateInputFile(binaryInputFile, length);
+		encodeInCBOR(binaryInputFile, cborFile);
 		decodeFromCborInFile(this.cborFile, this.binaryOutputFile);
-		asserFileEquals(this.binaryInputFile, this.binaryOutputFile);
+		assertFileEquals(this.binaryInputFile, this.binaryOutputFile);
 	}
 
 	private void encodeInCBOR(File inputFile, File outputFile) throws NoSuchAlgorithmException, IOException
 	{
 		CBORFactory f = new CBORFactory();
-		OutputStream os = null;
-		InputStream is = null;
-		JsonGenerator gen = null;
-		try
-		{
-			os = new BufferedOutputStream(new FileOutputStream(outputFile));
-			is = new BufferedInputStream(new FileInputStream(inputFile));
+		OutputStream os = new BufferedOutputStream(new FileOutputStream(outputFile));
+		InputStream is = new BufferedInputStream(new FileInputStream(inputFile));
 
-			gen = f.createGenerator(os);
-			gen.writeBinary(is, is.available());
-		}
-		finally
-		{
-			if (gen != null)
-			{
-				gen.close();
-			}
-			if (is != null)
-			{
-				is.close();
-			}
-			if (os != null)
-			{
-				os.close();
-			}
-		}
+		JsonGenerator gen = f.createGenerator(os);
+		gen.writeBinary(is, (int) inputFile.length());
+
+		gen.close();
+		is.close();
+		os.close();
 	}
 
-	private void decodeFromCborInFile(File cborFile, File outputFile) throws NoSuchAlgorithmException, IOException
+	private void decodeFromCborInFile(File input, File output) throws NoSuchAlgorithmException, IOException
 	{
-
 		CBORFactory f = new CBORFactory();
-		OutputStream os = null;
-		InputStream is = null;
-		CBORParser parser = null;
-		try
-		{
-			is = new BufferedInputStream(new FileInputStream(cborFile));
-			parser = f.createParser(is);
-			parser.nextToken();
-			parser.readBinaryValue(null, new FileOutputStream(outputFile));
-		}
-		finally
-		{
-			if (parser != null)
-			{
-				parser.close();
-			}
-			if (is != null)
-			{
-				is.close();
-			}
-			if (os != null)
-			{
-				os.close();
-			}
-		}
+		OutputStream os = new FileOutputStream(output);
+
+		InputStream is = new FileInputStream(input);
+		CBORParser parser = f.createParser(is);
+		parser.nextToken();
+		parser.readBinaryValue(null, os);
+
+		parser.close();
+		is.close();
+		os.close();
 	}
 
-	@Test
-	public void testSmallByteArray() throws Exception
+	private void assertFileEquals(File file1, File file2) throws IOException
 	{
-		testEncodeAndDecodeBytes(SMALL_LENGTH);
-		
-	}
-	
-	@Test
-	public void testLargeByteArray() throws Exception
-	{
-		testEncodeAndDecodeBytes(LARGE_LENGTH);
-		
-	}
+	    FileInputStream fis1 = new FileInputStream(file1);
+	    FileInputStream fis2 = new FileInputStream(file2);
 
-	private void asserFileEquals(File file1, File file2) throws IOException
-	{
-		FileInputStream fis1 = null;
-		FileInputStream fis2 = null;
-		try
-		{
-			fis1 = new FileInputStream(file1);
-			fis2 = new FileInputStream(file2);
+	    Assert.assertEquals(file1.length(), file2.length());
 
-			assertEquals(fis1.available(), fis2.available());
-			while (fis1.available() > 0)
-			{
-				assertEquals(fis1.read(), fis2.read());
-			}
-		}
-		finally
-		{
-			if (file1 != null)
-			{
-				fis1.close();
-			}
-			if (file2 != null)
-			{
-				fis2.close();
-			}
-		}
-
+	    int ch;
+	    
+	    while ((ch = fis1.read()) >= 0) {
+	        Assert.assertEquals(ch, fis2.read());
+	    }
+	    fis1.close();
+	    fis2.close();
 	}
 }
