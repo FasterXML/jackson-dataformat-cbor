@@ -21,7 +21,7 @@ encoded data using Jackson abstractions (streaming API, data binding, tree model
     <connection>scm:git:git@github.com:FasterXML/jackson-dataformat-cbor.git</connection>
     <developerConnection>scm:git:git@github.com:FasterXML/jackson-dataformat-cbor.git</developerConnection>
     <url>http://github.com/FasterXML/jackson-dataformat-cbor</url>    
-    <tag>HEAD</tag>
+    <tag>jackson-dataformat-cbor-2.5.1</tag>
   </scm>
 
   <properties>
