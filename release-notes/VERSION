@@ -4,6 +4,11 @@ Project: jackson-dataformat-cbor
 === Releases ===
 ------------------------------------------------------------------------
 
+2.4.6 (not yet released)
+
+#9: Infinite loop when trying to write binary data using CBORGenerator 
+ (reported by mbaril@github)
+
 2.4.5 (13-Jan-2015)
 2.4.4 (24-Nov-2014)
 2.4.3 (04-Oct-2014)
