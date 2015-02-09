@@ -22,7 +22,7 @@ public class CBORGenerator extends GeneratorBase
      * Let's ensure that we have big enough output buffer because of
      * safety margins we need for UTF-8 encoding.
      */
-    private final static int BYTE_BUFFER_FOR_OUTPUT = 16000;
+    final static int BYTE_BUFFER_FOR_OUTPUT = 16000;
 
     /**
      * Longest char chunk we will output is chosen so that it is guaranteed to fit
@@ -35,7 +35,7 @@ public class CBORGenerator extends GeneratorBase
      * This is the worst case length (in bytes) of maximum chunk we ever write.
      */
     private final static int MAX_LONG_STRING_BYTES = (MAX_LONG_STRING_CHARS * 3) + 3;
-    
+
     /**
      * Enumeration that defines all togglable features for CBOR generator.
      */
@@ -99,11 +99,6 @@ public class CBORGenerator extends GeneratorBase
      * be for encoding 64-character Strings.
      */
     private final static int MIN_BUFFER_LENGTH = (3 * 256) + 2;
-    
-    private final static int SURR1_FIRST = 0xD800;
-    private final static int SURR1_LAST = 0xDBFF;
-    private final static int SURR2_FIRST = 0xDC00;
-    private final static int SURR2_LAST = 0xDFFF;
 
     private final static long MIN_INT_AS_LONG = (long) Integer.MIN_VALUE;
     private final static long MAX_INT_AS_LONG = (long) Integer.MAX_VALUE;
@@ -1306,7 +1301,7 @@ public class CBORGenerator extends GeneratorBase
     {
         while (bytesLeft > 0) {
             int room = _outputEnd - _outputTail;
-            if (room < 0) {
+            if (room <= 0) {
                 _flushBuffer();
                 room = _outputEnd - _outputTail;
             }
