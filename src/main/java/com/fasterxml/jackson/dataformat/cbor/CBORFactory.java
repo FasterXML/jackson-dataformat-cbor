@@ -220,8 +220,6 @@ public class CBORFactory extends JsonFactory
     /**
      * Method for enabling or disabling specified generator feature
      * (check {@link CBORGenerator.Feature} for list of features)
-     *
-     * @since 1.2
      */
     public final CBORFactory configure(CBORGenerator.Feature f, boolean state) {
         if (state) {
