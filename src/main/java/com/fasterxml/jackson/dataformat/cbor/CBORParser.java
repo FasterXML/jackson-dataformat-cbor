@@ -2260,24 +2260,25 @@ public final class CBORParser extends ParserMinimalBase
             _quad1 = q;
             return _symbols.findName(q);
         }
+
+        final byte[] inBuf = _inputBuffer;
+        int inPtr = _inputPtr;
+
+        // First quadbyte is easy
+        int q1 = (inBuf[inPtr++] & 0xFF);
+        q1 =  (q1 << 8) | (inBuf[inPtr++] & 0xFF);
+        q1 =  (q1 << 8) | (inBuf[inPtr++] & 0xFF);
+        q1 =  (q1 << 8) | (inBuf[inPtr++] & 0xFF);
+        
         if (len < 9) {
-            int inPtr = _inputPtr;
-            final byte[] inBuf = _inputBuffer;
-            // First quadbyte is easy
-            int q1 = (inBuf[inPtr] & 0xFF) << 8;
-            q1 += (inBuf[++inPtr] & 0xFF);
-            q1 <<= 8;
-            q1 += (inBuf[++inPtr] & 0xFF);
-            q1 <<= 8;
-            q1 += (inBuf[++inPtr] & 0xFF);
-            int q2 = (inBuf[++inPtr] & 0xFF);
+            int q2 = (inBuf[inPtr++] & 0xFF);
             len -= 5;
             if (len > 0) {
-                q2 = (q2 << 8) + (inBuf[++inPtr] & 0xFF);
+                q2 = (q2 << 8) + (inBuf[inPtr++] & 0xFF);
                 if (--len > 0) {
-                    q2 = (q2 << 8) + (inBuf[++inPtr] & 0xFF);
+                    q2 = (q2 << 8) + (inBuf[inPtr++] & 0xFF);
                     if (--len > 0) {
-                        q2 = (q2 << 8) + (inBuf[++inPtr] & 0xFF);
+                        q2 = (q2 << 8) + (inBuf[inPtr++] & 0xFF);
                     }
                 }
             }
@@ -2285,13 +2286,39 @@ public final class CBORParser extends ParserMinimalBase
             _quad2 = q2;
             return _symbols.findName(q1, q2);
         }
-        return _findDecodedMedium(len);
+
+        int q2 = (inBuf[inPtr++] & 0xFF);
+        q2 =  (q2 << 8) | (inBuf[inPtr++] & 0xFF);
+        q2 =  (q2 << 8) | (inBuf[inPtr++] & 0xFF);
+        q2 =  (q2 << 8) | (inBuf[inPtr++] & 0xFF);
+
+        if (len < 13) {
+            int q3 = (inBuf[inPtr++] & 0xFF);
+            len -= 9;
+            if (len > 0) {
+                q3 = (q3 << 8) + (inBuf[inPtr++] & 0xFF);
+                if (--len > 0) {
+                    q3 = (q3 << 8) + (inBuf[inPtr++] & 0xFF);
+                    if (--len > 0) {
+                        q3 = (q3 << 8) + (inBuf[inPtr++] & 0xFF);
+                    }
+                }
+            }
+            if (_quadBuffer.length == 0) {
+                _quadBuffer = new int[16];
+            }
+            _quadBuffer[0] = q1;
+            _quadBuffer[1] = q2;
+            _quadBuffer[2] = q3;
+            return _symbols.findName(q1, q2, q3);
+        }
+        return _findDecodedLong(len, q1, q2);
     }
 
     /**
      * Method for locating names longer than 8 bytes (in UTF-8)
      */
-    private final String _findDecodedMedium(int len) throws IOException
+    private final String _findDecodedLong(int len, int q1, int q2) throws IOException
     {
         // first, need enough buffer to store bytes as ints:
         {
@@ -2300,17 +2327,20 @@ public final class CBORParser extends ParserMinimalBase
                 _quadBuffer = _growArrayTo(_quadBuffer, bufLen);
             }
         }
+        _quadBuffer[0] = q1;
+        _quadBuffer[1] = q2;
+        
         // then decode, full quads first
-        int offset = 0;
-        int inPtr = _inputPtr;
+        int offset = 2;
+        int inPtr = _inputPtr+8;
+        len -= 8;
+        
         final byte[] inBuf = _inputBuffer;
             do {
-                int q = (inBuf[inPtr++] & 0xFF) << 8;
-                q |= inBuf[inPtr++] & 0xFF;
-                q <<= 8;
-                q |= inBuf[inPtr++] & 0xFF;
-                q <<= 8;
-                q |= inBuf[inPtr++] & 0xFF;
+                int q = (inBuf[inPtr++] & 0xFF);
+                q = (q << 8) | inBuf[inPtr++] & 0xFF;
+                q = (q << 8) | inBuf[inPtr++] & 0xFF;
+                q = (q << 8) | inBuf[inPtr++] & 0xFF;
                 _quadBuffer[offset++] = q;
             } while ((len -= 4) > 3);
             // and then leftovers
