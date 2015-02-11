@@ -285,7 +285,7 @@ public final class CBORParser extends ParserMinimalBase
     /**
      * Quads used for hash calculation
      */
-    protected int _quad1, _quad2;
+    protected int _quad1, _quad2, _quad3;
 
     /*
     /**********************************************************
@@ -2238,7 +2238,7 @@ public final class CBORParser extends ParserMinimalBase
         _parsingContext.setCurrentName(name);
     }
     
-    private final String _findDecodedFromSymbols(int len) throws IOException
+    private final String _findDecodedFromSymbols(final int len) throws IOException
     {
         if ((_inputEnd - _inputPtr) < len) {
             _loadToHaveAtLeast(len);
@@ -2248,11 +2248,11 @@ public final class CBORParser extends ParserMinimalBase
             int inPtr = _inputPtr;
             final byte[] inBuf = _inputBuffer;
             int q = inBuf[inPtr] & 0xFF;
-            if (--len > 0) {
+            if (len > 0) {
                 q = (q << 8) + (inBuf[++inPtr] & 0xFF);
-                if (--len > 0) {
+                if (len > 1) {
                     q = (q << 8) + (inBuf[++inPtr] & 0xFF);
-                    if (--len > 0) {
+                    if (len > 2) {
                         q = (q << 8) + (inBuf[++inPtr] & 0xFF);
                     }
                 }
@@ -2272,12 +2272,12 @@ public final class CBORParser extends ParserMinimalBase
         
         if (len < 9) {
             int q2 = (inBuf[inPtr++] & 0xFF);
-            len -= 5;
-            if (len > 0) {
+            int left = len - 5;
+            if (left > 0) {
                 q2 = (q2 << 8) + (inBuf[inPtr++] & 0xFF);
-                if (--len > 0) {
+                if (left > 1) {
                     q2 = (q2 << 8) + (inBuf[inPtr++] & 0xFF);
-                    if (--len > 0) {
+                    if (left > 2) {
                         q2 = (q2 << 8) + (inBuf[inPtr++] & 0xFF);
                     }
                 }
@@ -2294,22 +2294,19 @@ public final class CBORParser extends ParserMinimalBase
 
         if (len < 13) {
             int q3 = (inBuf[inPtr++] & 0xFF);
-            len -= 9;
-            if (len > 0) {
+            int left = len - 9;
+            if (left > 0) {
                 q3 = (q3 << 8) + (inBuf[inPtr++] & 0xFF);
-                if (--len > 0) {
+                if (left > 1) {
                     q3 = (q3 << 8) + (inBuf[inPtr++] & 0xFF);
-                    if (--len > 0) {
+                    if (left > 2) {
                         q3 = (q3 << 8) + (inBuf[inPtr++] & 0xFF);
                     }
                 }
             }
-            if (_quadBuffer.length == 0) {
-                _quadBuffer = new int[16];
-            }
-            _quadBuffer[0] = q1;
-            _quadBuffer[1] = q2;
-            _quadBuffer[2] = q3;
+            _quad1 = q1;
+            _quad2 = q2;
+            _quad3 = q3;
             return _symbols.findName(q1, q2, q3);
         }
         return _findDecodedLong(len, q1, q2);
@@ -2363,6 +2360,9 @@ public final class CBORParser extends ParserMinimalBase
         }
         if (len < 9) {
             return _symbols.addName(name, _quad1, _quad2);
+        }
+        if (len < 13) {
+            return _symbols.addName(name, _quad1, _quad2, _quad3);
         }
         int qlen = (len + 3) >> 2;
         return _symbols.addName(name, _quadBuffer, qlen);
