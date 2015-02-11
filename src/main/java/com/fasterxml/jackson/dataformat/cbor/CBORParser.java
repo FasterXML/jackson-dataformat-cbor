@@ -2333,23 +2333,23 @@ public final class CBORParser extends ParserMinimalBase
         len -= 8;
         
         final byte[] inBuf = _inputBuffer;
-            do {
-                int q = (inBuf[inPtr++] & 0xFF);
-                q = (q << 8) | inBuf[inPtr++] & 0xFF;
-                q = (q << 8) | inBuf[inPtr++] & 0xFF;
-                q = (q << 8) | inBuf[inPtr++] & 0xFF;
-                _quadBuffer[offset++] = q;
-            } while ((len -= 4) > 3);
-            // and then leftovers
-            if (len > 0) {
-                int q = inBuf[inPtr] & 0xFF;
-                if (--len > 0) {
+        do {
+            int q = (inBuf[inPtr++] & 0xFF);
+            q = (q << 8) | inBuf[inPtr++] & 0xFF;
+            q = (q << 8) | inBuf[inPtr++] & 0xFF;
+            q = (q << 8) | inBuf[inPtr++] & 0xFF;
+            _quadBuffer[offset++] = q;
+        } while ((len -= 4) > 3);
+        // and then leftovers
+        if (len > 0) {
+            int q = inBuf[inPtr] & 0xFF;
+            if (len > 1) {
+                q = (q << 8) + (inBuf[++inPtr] & 0xFF);
+                if (len > 2) {
                     q = (q << 8) + (inBuf[++inPtr] & 0xFF);
-                    if (--len > 0) {
-                        q = (q << 8) + (inBuf[++inPtr] & 0xFF);
-                    }
                 }
-                _quadBuffer[offset++] = q;
+            }
+            _quadBuffer[offset++] = q;
         }
         return _symbols.findName(_quadBuffer, offset);
     }
