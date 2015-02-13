@@ -1746,7 +1746,7 @@ public final class CBORParser extends ParserMinimalBase
         // offline for better optimization
         return _finishShortText(len);
     }
-    
+
     private final String _finishShortText(int len) throws IOException
     {
         char[] outBuf = _textBuffer.emptyAndGetCurrentSegment();
@@ -2877,7 +2877,7 @@ public final class CBORParser extends ParserMinimalBase
                 +_parsingContext.getExpectedLength()+") "
                 +(_parsingContext.inObject() ? "Object" : "Array" ));
     }
-    
+
     protected void _reportInvalidChar(int c) throws JsonParseException {
         // Either invalid WS or illegal UTF-8 start char
         if (c < ' ') {
@@ -2885,15 +2885,15 @@ public final class CBORParser extends ParserMinimalBase
         }
         _reportInvalidInitial(c);
     }
-	
+
     protected void _reportInvalidInitial(int mask) throws JsonParseException {
         _reportError("Invalid UTF-8 start byte 0x"+Integer.toHexString(mask));
     }
-	
+
     protected void _reportInvalidOther(int mask) throws JsonParseException {
         _reportError("Invalid UTF-8 middle byte 0x"+Integer.toHexString(mask));
     }
-	
+
     protected void _reportInvalidOther(int mask, int ptr) throws JsonParseException {
         _inputPtr = ptr;
         _reportInvalidOther(mask);
