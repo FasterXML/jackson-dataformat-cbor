@@ -1122,7 +1122,7 @@ public class CBORGenerator extends GeneratorBase
             }
         }
 
-        // no; non-aSCII stuff, slower loop
+        // no; non-ASCII stuff, slower loop
         while (i < len) {
             int c = str.charAt(i++);
             if (c <= 0x7F) {
