@@ -199,6 +199,13 @@ public class CBORGenerator extends GeneratorBase
         }
     }
 
+    /**
+     * Alternative constructor that may be used to feed partially initialized content.
+     * 
+     * @param outputBuffer Buffer to use for output before flushing to the underlying stream
+     * @param offset Offset pointing past already buffered content; that is, number of bytes of valid content
+     *    to output, within buffer.
+     */
     public CBORGenerator(IOContext ctxt, int jsonFeatures, int formatFeatures,
             ObjectCodec codec, OutputStream out, byte[] outputBuffer, int offset, boolean bufferRecyclable)
     {
@@ -270,7 +277,12 @@ public class CBORGenerator extends GeneratorBase
     public Object getOutputTarget() {
         return _out;
     }
-    
+
+    @Override
+    public int getOutputBuffered() {
+        return _outputTail;
+    }
+
     /*
     /**********************************************************
     /* Overridden methods, write methods

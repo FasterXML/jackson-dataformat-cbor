@@ -16,8 +16,13 @@ public class GeneratorSimpleTest extends CBORTestBase
     {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         CBORGenerator gen = cborGenerator(out);
+
+        assertEquals(0, gen.getOutputBuffered());
         gen.writeBoolean(true);
+        assertEquals(1, gen.getOutputBuffered());
+        
         gen.close();
+        assertEquals(0, gen.getOutputBuffered());
         _verifyBytes(out.toByteArray(), CBORConstants.BYTE_TRUE);
 
         out = new ByteArrayOutputStream();
