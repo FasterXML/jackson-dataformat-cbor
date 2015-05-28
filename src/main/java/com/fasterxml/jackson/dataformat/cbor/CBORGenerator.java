@@ -1132,20 +1132,22 @@ public class CBORGenerator extends GeneratorBase
     private final int _encode(int outputPtr, String str, int len)
     {
         final byte[] outBuf = _outputBuffer;
-        int i = 0;
         final int outputStart = outputPtr;
 
-        while (true) {
+        for (int i = 0; i < len; ++i) {
             int c = str.charAt(i);
             if (c > 0x7F) {
-                break;
+                return _encode2(i, outputPtr, str, len, outputStart);
             }
             outBuf[outputPtr++] = (byte) c;
-            if (++i >= len) { // done!
-                return (outputPtr - outputStart);
-            }
         }
+        return (outputPtr - outputStart);
+    }
 
+    private final int _encode2(int i, int outputPtr, String str, int len,
+            int outputStart)
+    {
+        final byte[] outBuf = _outputBuffer;
         // no; non-ASCII stuff, slower loop
         while (i < len) {
             int c = str.charAt(i++);
