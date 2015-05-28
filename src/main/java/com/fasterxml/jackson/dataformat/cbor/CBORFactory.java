@@ -25,8 +25,7 @@ import com.fasterxml.jackson.core.io.IOContext;
  */
 public class CBORFactory extends JsonFactory
 {
-    // 2.4.1:
-	private static final long serialVersionUID = 9090274766235983048L;
+	private static final long serialVersionUID = 1; // 2.6
 
     /*
     /**********************************************************
@@ -146,10 +145,7 @@ public class CBORFactory extends JsonFactory
 
     // Defaults work fine for this:
     // public boolean canUseSchema(FormatSchema schema) { }
-    
-    /**
-     * Sub-classes need to override this method (as of 1.8)
-     */
+
     @Override
     public MatchStrength hasFormat(InputAccessor acc) throws IOException {
         return CBORParserBootstrapper.hasCBORFormat(acc);
@@ -166,6 +162,16 @@ public class CBORFactory extends JsonFactory
         return true;
     }
 
+    @Override // since 2.6
+    public Class<CBORParser.Feature> getFormatReadFeatureType() {
+        return CBORParser.Feature.class;
+    }
+
+    @Override // since 2.6
+    public Class<CBORGenerator.Feature> getFormatWriteFeatureType() {
+        return CBORGenerator.Feature.class;
+    }
+    
     /*
     /**********************************************************
     /* Configuration, parser settings

@@ -39,7 +39,8 @@ public class CBORGenerator extends GeneratorBase
     /**
      * Enumeration that defines all togglable features for CBOR generator.
      */
-    public enum Feature {
+    public enum Feature implements FormatFeature
+    {
         /**
          * Feature that determines whether generator should try to use smallest (size-wise)
          * integer representation: if true, will use smallest representation that is enough
@@ -82,10 +83,10 @@ public class CBORGenerator extends GeneratorBase
             _defaultState = defaultState;
             _mask = (1 << ordinal());
         }
-        
-        public boolean enabledByDefault() { return _defaultState; }
-        public boolean enabledIn(int flags) { return (flags & getMask()) != 0; }
-        public int getMask() { return _mask; }
+
+        @Override public boolean enabledByDefault() { return _defaultState; }
+        @Override public boolean enabledIn(int flags) { return (flags & getMask()) != 0; }
+        @Override public int getMask() { return _mask; }
     }
     
     /**
@@ -283,6 +284,19 @@ public class CBORGenerator extends GeneratorBase
         return _outputTail;
     }
 
+//    public JsonParser overrideStdFeatures(int values, int mask)
+
+    @Override
+    public int getFormatFeatures() {
+        return _formatFeatures;
+    }
+
+    @Override
+    public JsonGenerator overrideFormatFeatures(int values, int mask) {
+        _formatFeatures = (_formatFeatures & ~mask) | (values & mask);
+        return this;
+    }
+
     /*
     /**********************************************************
     /* Overridden methods, write methods
@@ -438,8 +452,6 @@ public class CBORGenerator extends GeneratorBase
      * start marker. But it mostly (or only?) makes sense for small
      * arrays, cases where length marker fits within type marker byte;
      * otherwise we might as well just use "indefinite" notation.
-     * 
-     * @since 2.4
      */
     @Override
     public void writeStartArray(int size) throws IOException {

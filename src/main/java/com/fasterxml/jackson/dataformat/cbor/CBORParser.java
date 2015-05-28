@@ -20,7 +20,8 @@ public final class CBORParser extends ParserMinimalBase
     /**
      * Enumeration that defines all togglable features for CBOR generators.
      */
-    public enum Feature {
+    public enum Feature implements FormatFeature
+    {
 //        BOGUS(false)
         ;
 
@@ -47,9 +48,9 @@ public final class CBORParser extends ParserMinimalBase
             _mask = (1 << ordinal());
         }
         
-        public boolean enabledByDefault() { return _defaultState; }
-        public int getMask() { return _mask; }
-        public boolean enabledIn(int flags) { return (flags & _mask) != 0; }
+        @Override public boolean enabledByDefault() { return _defaultState; }
+        @Override public int getMask() { return _mask; }
+        @Override public boolean enabledIn(int flags) { return (flags & _mask) != 0; }
     }
 
     private final static Charset UTF8 = Charset.forName("UTF-8");
@@ -410,6 +411,22 @@ public final class CBORParser extends ParserMinimalBase
     public Version version() {
         return PackageVersion.VERSION;
     }
+
+    /*
+    /**********************************************************
+    /* Configuration
+    /**********************************************************
+     */
+    
+//    public JsonParser overrideStdFeatures(int values, int mask)
+
+    @Override
+    public int getFormatFeatures() {
+        // No parser features, yet
+        return 0;
+    }
+
+    //public JsonParser overrideFormatFeatures(int values, int mask) {
 
     /*
     /**********************************************************
