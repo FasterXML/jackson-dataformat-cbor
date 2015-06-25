@@ -116,7 +116,7 @@ public class CBORGenerator extends GeneratorBase
 
     /**
      * Bit flag composed of bits that indicate which
-     * {@link com.fasterxml.jackson.dataformat.CBORGenerator.Feature}s
+     * {@link CBORGenerator.Feature}s
      * are enabled.
      */
     protected int _formatFeatures;
