@@ -8,8 +8,9 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.SequenceInputStream;
 
-public class ParserInputStreamTest extends CBORTestBase {
-
+// for [dataformat-cbor#13]
+public class ParserInputStreamTest extends CBORTestBase
+{
     @Test
     public void testInpuStream() throws Exception {
         CBORFactory f = new CBORFactory();
@@ -28,13 +29,8 @@ public class ParserInputStreamTest extends CBORTestBase {
         ByteArrayInputStream in2 = new ByteArrayInputStream(buf2);
         SequenceInputStream inputStream = new SequenceInputStream(in1, in2);
 
-        try {
-            JsonNode jsonNode = cborMapper.readTree(inputStream);
-        }
-        catch (ArrayIndexOutOfBoundsException ex){
-            ex.printStackTrace();
-            fail("Shouldn't throw an ArrayIndexOutOfBoundsException while parsing!");
-        }
+        JsonNode jsonNode = cborMapper.readTree(inputStream);
+        assertNotNull(jsonNode);
     }
 
     private byte[] generateHugeCBOR(CBORFactory f) throws IOException {
