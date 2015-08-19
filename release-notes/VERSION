@@ -7,6 +7,7 @@ Project: jackson-dataformat-cbor
 2.6.2 (not yet released)
 
 #13: Bug in boundary checking in the CBORParser
+ (reported by Steve G)
 
 2.6.1 (09-Aug-2015)
 2.6.0 (19-Jul-2015)

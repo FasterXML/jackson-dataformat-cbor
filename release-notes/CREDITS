@@ -16,4 +16,7 @@ mbaril@github)
   to write binary data using CBORGenerator
  (2.5.1)
 
+Steve Gury (stevegury@github)
 
+* Reported #13, suggested fix: Bug in boundary checking in the CBORParser
+ (2.6.2)
