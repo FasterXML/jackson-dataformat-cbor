@@ -180,10 +180,10 @@ public class CBORGenerator extends GeneratorBase
     /**********************************************************
      */
 
-    public CBORGenerator(IOContext ctxt, int jsonFeatures, int formatFeatures,
+    public CBORGenerator(IOContext ctxt, int stdFeatures, int formatFeatures,
             ObjectCodec codec, OutputStream out)
     {
-        super(jsonFeatures, codec);
+        super(stdFeatures, codec);
         _formatFeatures = formatFeatures;
         _cfgMinimalInts = Feature.WRITE_MINIMAL_INTS.enabledIn(formatFeatures);
         _ioContext = ctxt;
@@ -207,10 +207,10 @@ public class CBORGenerator extends GeneratorBase
      * @param offset Offset pointing past already buffered content; that is, number of bytes of valid content
      *    to output, within buffer.
      */
-    public CBORGenerator(IOContext ctxt, int jsonFeatures, int formatFeatures,
+    public CBORGenerator(IOContext ctxt, int stdFeatures, int formatFeatures,
             ObjectCodec codec, OutputStream out, byte[] outputBuffer, int offset, boolean bufferRecyclable)
     {
-        super(jsonFeatures, codec);
+        super(stdFeatures, codec);
         _formatFeatures = formatFeatures;
         _cfgMinimalInts = Feature.WRITE_MINIMAL_INTS.enabledIn(formatFeatures);
         _ioContext = ctxt;
@@ -292,8 +292,23 @@ public class CBORGenerator extends GeneratorBase
     }
 
     @Override
+    public JsonGenerator overrideStdFeatures(int values, int mask) {
+        int oldState = _features;
+        int newState = (oldState & ~mask) | (values & mask);
+        if (oldState != newState) {
+            _features = newState;
+        }
+        return this;
+    }
+    
+    @Override
     public JsonGenerator overrideFormatFeatures(int values, int mask) {
-        _formatFeatures = (_formatFeatures & ~mask) | (values & mask);
+        int oldState = _formatFeatures;
+        int newState = (_formatFeatures & ~mask) | (values & mask);
+        if (oldState != newState) {
+            _formatFeatures = newState;
+            _cfgMinimalInts = Feature.WRITE_MINIMAL_INTS.enabledIn(newState);
+        }
         return this;
     }
 
@@ -897,7 +912,7 @@ public class CBORGenerator extends GeneratorBase
     public void close() throws IOException
     {
         // First: let's see that we still have buffers...
-        if (_outputBuffer != null
+        if ((_outputBuffer != null)
             && isEnabled(JsonGenerator.Feature.AUTO_CLOSE_JSON_CONTENT)) {
             while (true) {
                 JsonStreamContext ctxt = getOutputContext();
