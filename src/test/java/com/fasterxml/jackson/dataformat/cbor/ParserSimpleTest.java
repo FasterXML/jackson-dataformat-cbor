@@ -129,11 +129,13 @@ public class ParserSimpleTest extends CBORTestBase
     {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         JsonGenerator gen = cborGenerator(f, out);
-        gen.writeNumber(value);
+        gen.writeNumber((float) value);
         gen.close();
         JsonParser p = cborParser(f, out.toByteArray());
         assertEquals(JsonToken.VALUE_NUMBER_FLOAT, p.nextToken());
-        assertEquals(NumberType.DOUBLE, p.getNumberType());
+        if (NumberType.FLOAT != p.getNumberType()) {
+            fail("Expected `NumberType.FLOAT`, got "+p.getNumberType()+": "+p.getText());
+        }
         assertEquals(value, p.getDoubleValue());
         assertNull(p.nextToken());
         p.close();
@@ -146,7 +148,7 @@ public class ParserSimpleTest extends CBORTestBase
                 (byte) (i16 >> 8), (byte) i16
         });
         assertEquals(JsonToken.VALUE_NUMBER_FLOAT, p.nextToken());
-        assertEquals(NumberType.DOUBLE, p.getNumberType());
+        assertEquals(NumberType.FLOAT, p.getNumberType());
         assertEquals(value, p.getDoubleValue());
         assertNull(p.nextToken());
         p.close();
@@ -345,5 +347,23 @@ public class ParserSimpleTest extends CBORTestBase
         }
         assertEquals(input, actual);
         p.close();
+    }
+
+    public void testFloatNumberType() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        CBORGenerator generator = cborGenerator(out);
+        generator.writeStartObject();
+        generator.writeFieldName("foo");
+        generator.writeNumber(3f);
+        generator.writeEndObject();
+        generator.close();
+
+        CBORParser parser = cborParser(out.toByteArray());
+        assertEquals(JsonToken.START_OBJECT, parser.nextToken());
+        assertEquals(JsonToken.FIELD_NAME, parser.nextToken());
+        assertEquals(JsonToken.VALUE_NUMBER_FLOAT, parser.nextToken());
+        assertEquals(NumberType.FLOAT, parser.getNumberType()); // fails with expected <FLOAT> but was <DOUBLE>
+        assertEquals(JsonToken.END_OBJECT, parser.nextToken());
+        parser.close();
     }
 }

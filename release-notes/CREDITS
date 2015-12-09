@@ -20,3 +20,9 @@ Steve Gury (stevegury@github)
 
 * Reported #13, suggested fix: Bug in boundary checking in the CBORParser
  (2.6.2)
+
+Adrien Grand (jpountz@github)
+
+* Reported #15: CBORParser.getNumberType returns DOUBLE even if the generator
+  has been fed with a float
+ (2.6.5)
