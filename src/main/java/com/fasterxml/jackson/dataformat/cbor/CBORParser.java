@@ -304,8 +304,9 @@ public final class CBORParser extends ParserMinimalBase
 
     // And then floating point types
 
-    final protected static int NR_DOUBLE = 0x008;
-    final protected static int NR_BIGDECIMAL = 0x0010;
+    final protected static int NR_FLOAT = 0x008;
+    final protected static int NR_DOUBLE = 0x010;
+    final protected static int NR_BIGDECIMAL = 0x0020;
 
     // Also, we need some numeric constants
 
@@ -354,6 +355,7 @@ public final class CBORParser extends ParserMinimalBase
 
     protected int _numberInt;
     protected long _numberLong;
+    protected float _numberFloat;
     protected double _numberDouble;
 
     // And then object types
@@ -503,7 +505,6 @@ public final class CBORParser extends ParserMinimalBase
     @Override
     public String getCurrentName() throws IOException
     {
-        // [JACKSON-395]: start markers require information from parent
         if (_currToken == JsonToken.START_OBJECT || _currToken == JsonToken.START_ARRAY) {
             CBORReadContext parent = _parsingContext.getParent();
             return parent.getCurrentName();
@@ -746,16 +747,14 @@ public final class CBORParser extends ParserMinimalBase
             case 25: // 16-bit float... 
                 // As per [http://stackoverflow.com/questions/5678432/decompressing-half-precision-floats-in-javascript]
                 {
-                    float f = (float) _decodeHalfSizeFloat();
-                    _numberDouble = (double) f;
-                    _numTypesValid = NR_DOUBLE;
+                    _numberFloat = (float) _decodeHalfSizeFloat();
+                    _numTypesValid = NR_FLOAT;
                 }
                 return (_currToken = JsonToken.VALUE_NUMBER_FLOAT);
             case 26: // Float32
                 {
-                    float f = Float.intBitsToFloat(_decode32Bits());
-                    _numberDouble = (double) f;
-                    _numTypesValid = NR_DOUBLE;
+                    _numberFloat = Float.intBitsToFloat(_decode32Bits());
+                    _numTypesValid = NR_FLOAT;
                 }
                 return (_currToken = JsonToken.VALUE_NUMBER_FLOAT);
             case 27: // Float64
@@ -1116,17 +1115,15 @@ public final class CBORParser extends ParserMinimalBase
             case 25: // 16-bit float... 
                 // As per [http://stackoverflow.com/questions/5678432/decompressing-half-precision-floats-in-javascript]
                 {
-                    float f = (float) _decodeHalfSizeFloat();
-                    _numberDouble = (double) f;
-                    _numTypesValid = NR_DOUBLE;
+                    _numberFloat = _decodeHalfSizeFloat();
+                    _numTypesValid = NR_FLOAT;
                 }
                 _currToken = JsonToken.VALUE_NUMBER_FLOAT;
                 return null;
             case 26: // Float32
                 {
-                    float f = Float.intBitsToFloat(_decode32Bits());
-                    _numberDouble = (double) f;
-                    _numTypesValid = NR_DOUBLE;
+                    _numberFloat = Float.intBitsToFloat(_decode32Bits());
+                    _numTypesValid = NR_FLOAT;
                 }
                 _currToken = JsonToken.VALUE_NUMBER_FLOAT;
                 return null;
@@ -1415,10 +1412,13 @@ public final class CBORParser extends ParserMinimalBase
         if ((_numTypesValid & NR_BIGDECIMAL) != 0) {
             return _numberBigDecimal;
         }
-        if ((_numTypesValid & NR_DOUBLE) == 0) { // sanity check
+        if ((_numTypesValid & NR_DOUBLE) != 0) {
+            return _numberDouble;
+        }
+        if ((_numTypesValid & NR_FLOAT) == 0) { // sanity check
             _throwInternal();
         }
-        return _numberDouble;
+        return _numberFloat;
     }
     
     @Override
@@ -1446,7 +1446,10 @@ public final class CBORParser extends ParserMinimalBase
         if ((_numTypesValid & NR_BIGDECIMAL) != 0) {
             return NumberType.BIG_DECIMAL;
         }
-        return NumberType.DOUBLE;
+        if ((_numTypesValid & NR_DOUBLE) != 0) {
+            return NumberType.DOUBLE;
+        }
+        return NumberType.FLOAT;
     }
     
     @Override
@@ -1494,18 +1497,23 @@ public final class CBORParser extends ParserMinimalBase
     @Override
     public float getFloatValue() throws IOException
     {
-        double value = getDoubleValue();
-        /* 22-Jan-2009, tatu: Bounds/range checks would be tricky
-         *   here, so let's not bother even trying...
-         */
+        if ((_numTypesValid & NR_FLOAT) == 0) {
+            if (_numTypesValid == NR_UNKNOWN) {
+                _checkNumericValue(NR_FLOAT);
+            }
+            if ((_numTypesValid & NR_FLOAT) == 0) {
+                convertNumberToFloat();
+            }
+        }
+        // Bounds/range checks would be tricky here, so let's not bother even trying...
         /*
         if (value < -Float.MAX_VALUE || value > MAX_FLOAT_D) {
             _reportError("Numeric value ("+getText()+") out of range of Java float");
         }
         */
-        return (float) value;
+        return _numberFloat;
     }
-    
+
     @Override
     public double getDoubleValue() throws IOException
     {
@@ -1571,6 +1579,11 @@ public final class CBORParser extends ParserMinimalBase
                 reportOverflowInt();
             }
             _numberInt = (int) _numberDouble;
+        } else if ((_numTypesValid & NR_FLOAT) != 0) {
+            if (_numberFloat < MIN_INT_D || _numberFloat > MAX_INT_D) {
+                reportOverflowInt();
+            }
+            _numberInt = (int) _numberFloat;
         } else if ((_numTypesValid & NR_BIGDECIMAL) != 0) {
             if (BD_MIN_INT.compareTo(_numberBigDecimal) > 0 
                 || BD_MAX_INT.compareTo(_numberBigDecimal) < 0) {
@@ -1594,11 +1607,15 @@ public final class CBORParser extends ParserMinimalBase
             }
             _numberLong = _numberBigInt.longValue();
         } else if ((_numTypesValid & NR_DOUBLE) != 0) {
-            // Need to check boundaries
             if (_numberDouble < MIN_LONG_D || _numberDouble > MAX_LONG_D) {
                 reportOverflowLong();
             }
             _numberLong = (long) _numberDouble;
+        } else if ((_numTypesValid & NR_FLOAT) != 0) {
+            if (_numberFloat < MIN_LONG_D || _numberFloat > MAX_LONG_D) {
+                reportOverflowInt();
+            }
+            _numberLong = (long) _numberFloat;
         } else if ((_numTypesValid & NR_BIGDECIMAL) != 0) {
             if (BD_MIN_LONG.compareTo(_numberBigDecimal) > 0 
                 || BD_MAX_LONG.compareTo(_numberBigDecimal) < 0) {
@@ -1622,10 +1639,32 @@ public final class CBORParser extends ParserMinimalBase
             _numberBigInt = BigInteger.valueOf(_numberInt);
         } else if ((_numTypesValid & NR_DOUBLE) != 0) {
             _numberBigInt = BigDecimal.valueOf(_numberDouble).toBigInteger();
+        } else if ((_numTypesValid & NR_FLOAT) != 0) {
+            _numberBigInt = BigDecimal.valueOf(_numberFloat).toBigInteger();
         } else {
             _throwInternal();
         }
         _numTypesValid |= NR_BIGINT;
+    }
+
+    protected void convertNumberToFloat() throws IOException
+    {
+        // Note: this MUST start with more accurate representations, since we don't know which
+        //  value is the original one (others get generated when requested)
+        if ((_numTypesValid & NR_BIGDECIMAL) != 0) {
+            _numberFloat = _numberBigDecimal.floatValue();
+        } else if ((_numTypesValid & NR_BIGINT) != 0) {
+            _numberFloat = _numberBigInt.floatValue();
+        } else if ((_numTypesValid & NR_DOUBLE) != 0) {
+            _numberFloat = (float) _numberDouble;
+        } else if ((_numTypesValid & NR_LONG) != 0) {
+            _numberFloat = (float) _numberLong;
+        } else if ((_numTypesValid & NR_INT) != 0) {
+            _numberFloat = (float) _numberInt;
+        } else {
+            _throwInternal();
+        }
+        _numTypesValid |= NR_FLOAT;
     }
     
     protected void convertNumberToDouble() throws IOException
@@ -1634,6 +1673,8 @@ public final class CBORParser extends ParserMinimalBase
         //  value is the original one (others get generated when requested)
         if ((_numTypesValid & NR_BIGDECIMAL) != 0) {
             _numberDouble = _numberBigDecimal.doubleValue();
+        } else if ((_numTypesValid & NR_FLOAT) != 0) {
+            _numberDouble = (double) _numberFloat;
         } else if ((_numTypesValid & NR_BIGINT) != 0) {
             _numberDouble = _numberBigInt.doubleValue();
         } else if ((_numTypesValid & NR_LONG) != 0) {
@@ -1650,7 +1691,7 @@ public final class CBORParser extends ParserMinimalBase
     {
         // Note: this MUST start with more accurate representations, since we don't know which
         //  value is the original one (others get generated when requested)
-        if ((_numTypesValid & NR_DOUBLE) != 0) {
+        if ((_numTypesValid & (NR_DOUBLE | NR_FLOAT)) != 0) {
             // Let's parse from String representation, to avoid rounding errors that
             //non-decimal floating operations would incur
             _numberBigDecimal = NumberInput.parseBigDecimal(getText());
@@ -2526,9 +2567,8 @@ public final class CBORParser extends ParserMinimalBase
         case 2:
             return _decode32Bits();
         case 3:
-            /* 16-Jan-2014, tatu: Technically legal, but nothing defined, so let's
-             *   only allow for cases where encoder is being wasteful...
-             */
+            // 16-Jan-2014, tatu: Technically legal, but nothing defined, so let's
+            //   only allow for cases where encoder is being wasteful...
             long l = _decode64Bits();
             if (l < MIN_INT_L || l > MAX_INT_L) {
                 _reportError("Illegal Tag value: "+l);
@@ -2592,7 +2632,7 @@ public final class CBORParser extends ParserMinimalBase
         return len;
     }
     
-    private double _decodeHalfSizeFloat() throws IOException
+    private float _decodeHalfSizeFloat() throws IOException
     {
         int i16 = _decode16Bits() & 0xFFFF;
 
@@ -2601,17 +2641,17 @@ public final class CBORParser extends ParserMinimalBase
         int f = i16 & 0x03FF;
 
         if (e == 0) {
-            double d = MATH_POW_2_NEG14 * (f / MATH_POW_2_10);
-            return neg ? -d : d;
+            float result = (float) (MATH_POW_2_NEG14 * (f / MATH_POW_2_10));
+            return neg ? -result : result;
         }
         if (e == 0x1F) {
-            if (f != 0) return Double.NaN;
+            if (f != 0) return Float.NaN;
             return neg ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
         }
-        double d = Math.pow(2, e - 15) * (1 + f / MATH_POW_2_10);
-        return neg ? -d : d;
+        float result = (float) (Math.pow(2, e - 15) * (1 + f / MATH_POW_2_10));
+        return neg ? -result : result;
     }
-    
+
     private final int _decode8Bits() throws IOException {
         if (_inputPtr >= _inputEnd) {
             loadMoreGuaranteed();

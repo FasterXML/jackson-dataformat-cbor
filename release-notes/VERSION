@@ -4,6 +4,11 @@ Project: jackson-dataformat-cbor
 === Releases ===
 ------------------------------------------------------------------------
 
+2.6.5 (not yet released)
+
+#15: CBORParser.getNumberType returns DOUBLE even if the generator has been fed with a float
+ (reported by Adrien G)
+
 2.6.4 (07-Dec-2015)
 2.6.3 (12-Oct-2015)
 
