@@ -4,7 +4,7 @@ Project: jackson-dataformat-cbor
 === Releases ===
 ------------------------------------------------------------------------
 
-2.7.0 (not yet released)
+2.7.0 (10-Jan-2016)
 
 #14: Add support for dynamically changing `CBORGenerator.Feature`s
 
