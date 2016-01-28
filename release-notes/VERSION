@@ -4,6 +4,11 @@ Project: jackson-dataformat-cbor
 === Releases ===
 ------------------------------------------------------------------------
 
+2.5.6 (not released)
+
+#18: Correct parsing of zero length byte strings
+ (reported, fix suggested by philipa@github)
+
 2.5.5 (07-Dec-2015)
 2.5.4 (09-Jun-2015)
 2.5.3 (24-Apr-2015)

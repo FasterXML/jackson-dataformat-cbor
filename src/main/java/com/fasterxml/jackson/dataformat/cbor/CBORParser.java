@@ -18,6 +18,8 @@ import com.fasterxml.jackson.core.util.TextBuffer;
 
 public final class CBORParser extends ParserMinimalBase
 {
+    private final static byte[] NO_BYTES = new byte[0];
+    
     /**
      * Enumeration that defines all togglable features for CBOR generators.
      */
@@ -1726,6 +1728,9 @@ public final class CBORParser extends ParserMinimalBase
     {
         // First, simple: non-chunked
         if (len >= 0) {
+            if (len == 0) {
+                return NO_BYTES;
+            }
             byte[] b = new byte[len];
             if (_inputPtr >= _inputEnd) {
                 loadMoreGuaranteed();
