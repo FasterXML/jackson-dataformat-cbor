@@ -2079,7 +2079,7 @@ public final class CBORParser extends ParserMinimalBase
         // First, simple: non-chunked
         if (len >= 0) {
             byte[] b = new byte[len];
-            if (_inputPtr >= _inputEnd) {
+            if (_inputPtr > _inputEnd) {
                 loadMoreGuaranteed();
             }
             int ptr = 0;
