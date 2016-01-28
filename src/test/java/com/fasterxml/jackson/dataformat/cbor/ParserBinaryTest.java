@@ -20,6 +20,7 @@ public class ParserBinaryTest extends CBORTestBase
     private final ObjectMapper MAPPER = cborMapper();
 
     public void testSmallBinaryValues() throws Exception {
+        _testBinary(0);
         _testBinary(1);
         _testBinary(20);
         _testBinary(100);

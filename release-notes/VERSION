@@ -4,6 +4,11 @@ Project: jackson-dataformat-cbor
 === Releases ===
 ------------------------------------------------------------------------
 
+2.6.6 (not yet released)
+
+#18: Correct parsing of zero length byte strings
+ (reported, fix suggested by philipa@github)
+
 2.6.5 (19-Jan-2016)
 
 #15: CBORParser.getNumberType returns DOUBLE even if the generator has been fed with a float
@@ -24,6 +29,7 @@ No changes since 2.6.2
 
 No changes since 2.5
 
+2.5.5 (07-Dec-2015)
 2.5.4 (09-Jun-2015)
 2.5.3 (24-Apr-2015)
 2.5.2 (29-Mar-2015)
