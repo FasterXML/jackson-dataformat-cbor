@@ -4,6 +4,11 @@ Project: jackson-dataformat-cbor
 === Releases ===
 ------------------------------------------------------------------------
 
+2.7.1 (not yet released)
+
+#19: Fix reported location after non-stream input has been parsed.
+ (contributed by philipa@github)
+
 2.7.0 (10-Jan-2016)
 
 #14: Add support for dynamically changing `CBORGenerator.Feature`s
