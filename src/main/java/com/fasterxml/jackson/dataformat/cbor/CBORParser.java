@@ -2841,9 +2841,9 @@ public final class CBORParser extends ParserMinimalBase
 
     protected final boolean loadMore() throws IOException
     {
-        _currInputProcessed += _inputEnd;
-        
         if (_inputStream != null) {
+            _currInputProcessed += _inputEnd;
+
             int count = _inputStream.read(_inputBuffer, 0, _inputBuffer.length);
             if (count > 0) {
                 _inputPtr = 0;
