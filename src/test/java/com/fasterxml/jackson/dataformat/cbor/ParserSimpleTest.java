@@ -240,6 +240,34 @@ public class ParserSimpleTest extends CBORTestBase
         p.close();
     }
 
+    public void testCurrentLocationByteOffset() throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        CBORGenerator gen = cborGenerator(out);
+        gen.writeString("1234567890");
+        gen.writeString("1234567890");
+        gen.close();
+
+        final byte[] b = out.toByteArray();
+
+        JsonParser p = cborParser(b);
+
+        assertToken(JsonToken.VALUE_STRING, p.nextToken());
+        assertEquals(1, p.getCurrentLocation().getByteOffset());
+        p.getText(); // fully read token.
+        assertEquals(11, p.getCurrentLocation().getByteOffset());
+
+        assertToken(JsonToken.VALUE_STRING, p.nextToken());
+        assertEquals(12, p.getCurrentLocation().getByteOffset());
+        p.getText();
+        assertEquals(22, p.getCurrentLocation().getByteOffset());
+
+        assertNull(p.nextToken());
+        assertEquals(22, p.getCurrentLocation().getByteOffset());
+
+        p.close();
+        assertEquals(22, p.getCurrentLocation().getByteOffset());
+    }
+
     public void testLongNonChunkedText() throws Exception
     {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
