@@ -3,6 +3,7 @@ package com.fasterxml.jackson.dataformat.cbor;
 import java.io.*;
 import java.util.*;
 
+import com.fasterxml.jackson.core.JsonGenerationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class GeneratorSimpleTest extends CBORTestBase
@@ -333,4 +334,31 @@ public class GeneratorSimpleTest extends CBORTestBase
                 b);
     }
 
+    public void testInvalidWrites() throws Exception
+    {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        CBORGenerator gen = cborGenerator(out);
+        gen.writeStartObject();
+        // this should NOT succeed:
+        try {
+            gen.writeString("test");
+            fail("Should NOT allow write of anything but FIELD_NAME or END_OBJECT at this point");
+        } catch (JsonGenerationException e) {
+            verifyException(e, "expecting field name");
+        }
+        gen.close();
+
+        // and as per [dataformat-cbor#21] this also
+        out = new ByteArrayOutputStream();
+        gen = cborGenerator(out);
+        gen.writeStartArray();
+        gen.writeStartObject();
+        try {
+            gen.writeString("BAR");
+            fail("Should NOT allow write of anything but FIELD_NAME or END_OBJECT at this point");
+        } catch (JsonGenerationException e) {
+            verifyException(e, "expecting field name");
+        }
+        gen.close();
+    }
 }
