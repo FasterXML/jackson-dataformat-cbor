@@ -6,6 +6,8 @@ Project: jackson-dataformat-cbor
 
 2.7.2 (not yet released)
 
+#20: Add a public `finishToken()`
+ (requested by philipa@github)
 - Change build to produce JDK6-compatible jar, to allow use on JDK6 runtime
 
 2.7.1 (02-Feb-2016)
