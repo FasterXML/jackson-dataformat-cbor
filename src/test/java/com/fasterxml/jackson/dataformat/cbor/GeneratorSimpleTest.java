@@ -1,7 +1,10 @@
 package com.fasterxml.jackson.dataformat.cbor;
 
 import java.io.*;
+import java.math.BigDecimal;
 import java.util.*;
+
+import org.junit.Assert;
 
 import com.fasterxml.jackson.core.JsonGenerationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -360,5 +363,56 @@ public class GeneratorSimpleTest extends CBORTestBase
             verifyException(e, "expecting field name");
         }
         gen.close();
+    }
+
+    public void testCopyCurrentEventWithTag() throws Exception {
+        final ByteArrayOutputStream sourceBytes = new ByteArrayOutputStream();
+        final CBORGenerator sourceGen = cborGenerator(sourceBytes);
+        sourceGen.writeNumber(BigDecimal.ONE);
+        sourceGen.close();
+
+        final ByteArrayOutputStream targetBytes = new ByteArrayOutputStream();
+        final CBORGenerator gen = cborGenerator(targetBytes);
+        final CBORParser cborParser = cborParser(sourceBytes);
+        while (cborParser.nextToken() != null) {
+            gen.copyCurrentEvent(cborParser);
+        }
+        gen.close();
+
+        // copyCurrentEvent doesn't preserve fixed arrays, so we can't
+        // compare with the source bytes.
+        Assert.assertArrayEquals(new byte[] {
+                CBORConstants.BYTE_TAG_BIGFLOAT,
+                CBORConstants.BYTE_ARRAY_INDEFINITE,
+                0,
+                1,
+                CBORConstants.BYTE_BREAK
+            },
+            targetBytes.toByteArray());
+    }
+
+    public void testCopyCurrentSturctureWithTag() throws Exception {
+        final ByteArrayOutputStream sourceBytes = new ByteArrayOutputStream();
+        final CBORGenerator sourceGen = cborGenerator(sourceBytes);
+        sourceGen.writeNumber(BigDecimal.ONE);
+        sourceGen.close();
+
+        final ByteArrayOutputStream targetBytes = new ByteArrayOutputStream();
+        final CBORGenerator gen = cborGenerator(targetBytes);
+        final CBORParser cborParser = cborParser(sourceBytes);
+        cborParser.nextToken();
+        gen.copyCurrentStructure(cborParser);
+        gen.close();
+
+        // copyCurrentEvent doesn't preserve fixed arrays, so we can't
+        // compare with the source bytes.
+        Assert.assertArrayEquals(new byte[] {
+                CBORConstants.BYTE_TAG_BIGFLOAT,
+                CBORConstants.BYTE_ARRAY_INDEFINITE,
+                0,
+                1,
+                CBORConstants.BYTE_BREAK
+            },
+            targetBytes.toByteArray());
     }
 }
