@@ -26,3 +26,10 @@ Adrien Grand (jpountz@github)
 * Reported #15: CBORParser.getNumberType returns DOUBLE even if the generator
   has been fed with a float
  (2.6.5)
+
+philipa@githubL
+
+* Requested #20: Add a public `finishToken()`
+ (2.7.2)
+* Requested #22: CBORGenerator.copyCurrentStructure() and copyCurrentEvent() do not copy tags
+ (2.7.2)

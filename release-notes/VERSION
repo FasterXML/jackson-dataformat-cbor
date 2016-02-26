@@ -8,6 +8,8 @@ Project: jackson-dataformat-cbor
 
 #20: Add a public `finishToken()`
  (requested by philipa@github)
+#22: CBORGenerator.copyCurrentStructure() and copyCurrentEvent() do not copy tags
+ (requested by philipa@github)
 - Change build to produce JDK6-compatible jar, to allow use on JDK6 runtime
 
 2.7.1 (02-Feb-2016)
