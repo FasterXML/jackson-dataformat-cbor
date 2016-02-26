@@ -363,7 +363,44 @@ public class CBORGenerator extends GeneratorBase
         _verifyValueWrite("write String value");
         _writeString(value);
     }
+
+    /*
+    /**********************************************************
+    /* Overridden methods, copying with tag-awareness
+    /**********************************************************
+     */
+
+    /**
+     * Specialize {@link JsonGenerator#copyCurrentEvent} to handle tags.
+     */
+    @Override
+    public void copyCurrentEvent(JsonParser p) throws IOException {
+        maybeCopyTag(p);
+        super.copyCurrentEvent(p);
+    }
+
+    /**
+     * Specialize {@link JsonGenerator#copyCurrentStructure} to handle tags.
+     */
+    @Override
+    public void copyCurrentStructure(JsonParser p) throws IOException {
+        maybeCopyTag(p);
+        super.copyCurrentStructure(p);
+    }
+
+    protected void maybeCopyTag(JsonParser p) throws IOException
+    {
+        if (p instanceof CBORParser) {
+            if (p.hasCurrentToken()) {
+                final int currentTag = ((CBORParser)p).getCurrentTag();
     
+                if (currentTag != -1) {
+                    writeTag(currentTag);
+                }
+            }
+        }
+    }
+
     /*
     /**********************************************************
     /* Extended API, configuration
@@ -1411,39 +1448,5 @@ public class CBORGenerator extends GeneratorBase
 
     protected UnsupportedOperationException _notSupported() {
         return new UnsupportedOperationException();
-    }
-
-    /**
-     * Specialise {@link JsonGenerator#copyCurrentEvent} to handle tags.
-     */
-    @Override
-    public void copyCurrentEvent(JsonParser jp) throws IOException {
-        maybeCopyTag(jp);
-        super.copyCurrentEvent(jp);
-    }
-
-    /**
-     * Specialise {@link JsonGenerator#copyCurrentStructure} to handle tags.
-     */
-    @Override
-    public void copyCurrentStructure(JsonParser jp) throws IOException {
-        maybeCopyTag(jp);
-        super.copyCurrentStructure(jp);
-    }
-
-    private void maybeCopyTag(JsonParser jp) throws IOException {
-        final JsonToken t = jp.getCurrentToken();
-
-        if (t == null || t == JsonToken.NOT_AVAILABLE) {
-            _reportError("No current event to copy");
-        }
-
-        if (jp instanceof CBORParser) {
-            final int currentTag = ((CBORParser)jp).getCurrentTag();
-
-            if (currentTag != -1) {
-                writeTag(currentTag);
-            }
-        }
     }
 }
