@@ -52,7 +52,7 @@ public class CBORGenerator extends GeneratorBase
         /**
          * Feature that determines whether CBOR "Self-Describe Tag" (value 55799,
          * encoded as 3-byte sequence of <code>0xD9, 0xD9, 0xF7</code>) should be written
-         * at the beginnig of document or not.
+         * at the beginning of document or not.
          *<p>
          * Default value is <code>false</code> meaning that type tag will not be written
          * at the beginning of a new document.
