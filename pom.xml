@@ -8,7 +8,7 @@
   </parent>
   <groupId>com.fasterxml.jackson.dataformat</groupId>
   <artifactId>jackson-dataformat-cbor</artifactId>
-  <version>2.7.4-SNAPSHOT</version>
+  <version>2.8.0-SNAPSHOT</version>
   <name>Jackson-dataformat-CBOR</name>
   <packaging>bundle</packaging>
   <description>Support for reading and writing Concise Binary Object Representation
@@ -25,11 +25,10 @@ encoded data using Jackson abstractions (streaming API, data binding, tree model
   </scm>
 
   <properties>
-    <version.jackson.core>2.7.3</version.jackson.core>
+    <version.jackson.core>2.8.0-SNAPSHOT</version.jackson.core>
 
-    <!-- 23-Feb-2016, tatu: Try to keep JDK6 runtime for 2.7 at least -->
-    <javac.src.version>1.6</javac.src.version>
-    <javac.target.version>1.6</javac.target.version>
+    <!-- With Jackson 2.8 we will require JDK 7 and new language features may be used
+      -->
 
     <!-- Generate PackageVersion.java into this directory. -->
     <packageVersion.dir>com/fasterxml/jackson/dataformat/cbor</packageVersion.dir>
