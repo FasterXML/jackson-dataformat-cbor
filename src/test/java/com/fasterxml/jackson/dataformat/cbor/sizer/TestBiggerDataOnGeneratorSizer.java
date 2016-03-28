@@ -1,85 +1,18 @@
-package com.fasterxml.jackson.dataformat.cbor;
-
-import java.util.*;
+package com.fasterxml.jackson.dataformat.cbor.sizer;
 
 import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.dataformat.cbor.TestBiggerData;
 
 /**
  * Bigger test to try to do smoke-testing of overall functionality,
  * using more sizable (500k of JSON, 200k of encoded data) dataset.
  * Should tease out at least some of boundary conditions.
  */
-public class TestBiggerData extends CBORTestBase
-{
-	public static class Citm
-	{
-		public Map<Integer,String> areaNames;
-		public Map<Integer,String> audienceSubCategoryNames;
-		public Map<Integer,String> blockNames;
-		public Map<Integer,String> seatCategoryNames;
-		public Map<Integer,String> subTopicNames;
-		public Map<Integer,String> subjectNames;
-		public Map<Integer,String> topicNames;
-		public Map<Integer,int[]> topicSubTopics;
-		public Map<String,String> venueNames;
-
-		public Map<Integer,Event> events;
-		public List<Performance> performances;
-	}
-
-	public static class Event
-	{
-		public int id;
-		public String name;
-		public String description;
-		public String subtitle;
-		public String logo;
-		public int subjectCode;
-		public int[] topicIds;
-		public LinkedHashSet<Integer> subTopicIds;
-	}
-
-	public static class Performance
-	{
-		public int id;
-		public int eventId;
-		public String name;
-		public String description;
-		public String logo;
-
-		public List<Price> prices;
-		public List<SeatCategory> seatCategories;
-
-		public long start;
-		public String seatMapImage;
-		public String venueCode;
-}
-
-	public static class Price {
-		public int amount;
-		public int audienceSubCategoryId;
-		public int seatCategoryId;
-	}
-
-	public static class SeatCategory {
-		public int seatCategoryId;
-		public List<Area> areas;
-	}
-
-	public static class Area {
-		public int areaId;
-		public int[] blockIds;
-	}
-
-    /*
-    /**********************************************************
-    /* Test methods
-    /**********************************************************
-     */
-
+public class TestBiggerDataOnGeneratorSizer extends TestBiggerData
+{	
 	final ObjectMapper MAPPER = new ObjectMapper();
 	
-	public void testReading() throws Exception
+	public void testReadingOnGeneratorSizer() throws Exception
 	{
 		Citm citm0 = MAPPER.readValue(getClass().getResourceAsStream("/data/citm_catalog.json"),
 				Citm.class);
@@ -108,8 +41,8 @@ public class TestBiggerData extends CBORTestBase
 		assertNotNull(citm.venueNames);
 		assertEquals(1, citm.venueNames.size());
 	}
-
-	public void testRoundTrip() throws Exception
+	
+	public void testRoundTripOnGeneratorSizer() throws Exception
 	{
 		Citm citm0 = MAPPER.readValue(getClass().getResourceAsStream("/data/citm_catalog.json"),
 				Citm.class);

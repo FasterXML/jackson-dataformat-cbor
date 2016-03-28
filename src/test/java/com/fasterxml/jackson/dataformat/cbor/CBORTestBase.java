@@ -11,7 +11,7 @@ import org.junit.Assert;
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-abstract class CBORTestBase
+public abstract class CBORTestBase
     extends junit.framework.TestCase
 {
 
@@ -37,20 +37,20 @@ abstract class CBORTestBase
     protected CBORParser cborParser(CBORFactory f, byte[] input) throws IOException {
         return f.createParser(input);
     }
-
+    
     protected CBORParser cborParser(CBORFactory f, InputStream in) throws IOException {
         return f.createParser(in);
     }
     
     protected ObjectMapper cborMapper() {
         return new ObjectMapper(cborFactory());
-    }
-    
+    } 
+        
     protected CBORFactory cborFactory() {
         CBORFactory f = new CBORFactory();
         return f;
     }
-
+    
     protected byte[] cborDoc(String json) throws IOException {
         return cborDoc(cborFactory(), json);
     }
@@ -82,7 +82,7 @@ abstract class CBORTestBase
     {
         return f.createGenerator(result, null);
     }
-
+    
     /*
     /**********************************************************
     /* Additional assertion methods
@@ -228,6 +228,26 @@ abstract class CBORTestBase
         return sw.toString();
     }
     
+    protected static String byteToHexString(byte[] cborValue) 
+    {
+      StringBuilder hexValue = new StringBuilder();
+
+      String prefix = "";
+
+      for(byte b : cborValue) {
+
+        hexValue.append(prefix + byteToHexString(b));
+        prefix = " ";
+      }
+
+      return hexValue.toString();
+    }
+
+    protected static String byteToHexString(byte byteVal) 
+    {
+      return String.format("%02x", byteVal);
+    }
+    
     /*
     /**********************************************************
     /* Other helper methods
@@ -241,4 +261,5 @@ abstract class CBORTestBase
     protected static String quote(String str) {
         return '"'+str+'"';
     }
+    
 }

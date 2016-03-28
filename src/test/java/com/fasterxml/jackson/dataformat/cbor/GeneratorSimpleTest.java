@@ -171,7 +171,7 @@ public class GeneratorSimpleTest extends CBORTestBase
         gen.close();
         int raw = Float.floatToIntBits(f);
         _verifyBytes(out.toByteArray(),
-                (byte) (CBORConstants.BYTE_FLOAT32),
+                (CBORConstants.BYTE_FLOAT32),
                 (byte) (raw >> 24),
                 (byte) (raw >> 16),
                 (byte) (raw >> 8),
@@ -185,7 +185,7 @@ public class GeneratorSimpleTest extends CBORTestBase
         gen.close();
         long rawL = Double.doubleToLongBits(d);
         _verifyBytes(out.toByteArray(),
-                (byte) (CBORConstants.BYTE_FLOAT64),
+                (CBORConstants.BYTE_FLOAT64),
                 (byte) (rawL >> 56),
                 (byte) (rawL >> 48),
                 (byte) (rawL >> 40),
@@ -210,23 +210,24 @@ public class GeneratorSimpleTest extends CBORTestBase
 
     public void testEmptyObject() throws Exception
     {
-        // First: empty array (2 bytes)
+        // First: empty map (2 bytes)
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         CBORGenerator gen = cborGenerator(out);
         gen.writeStartObject();
         gen.writeEndObject();
         gen.close();
         _verifyBytes(out.toByteArray(), CBORConstants.BYTE_OBJECT_INDEFINITE,
-               CBORConstants.BYTE_BREAK);
-    }
+                CBORConstants.BYTE_BREAK);
+   //_verifyBytes(out.toByteArray(), (byte) (CBORConstants.PREFIX_TYPE_BYTES+0));
+        }
     
-    public void testIntArray() throws Exception
+    public void testIntArraySmall() throws Exception
     {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         CBORGenerator gen = cborGenerator(out);
         
-        // currently will produce indefinite-length array
-        gen.writeStartArray();
+        // currently will produce a 3-length array
+        gen.writeStartArray(3);
         gen.writeNumber(1);
         gen.writeNumber(2);
         gen.writeNumber(3);
@@ -234,11 +235,10 @@ public class GeneratorSimpleTest extends CBORTestBase
         gen.close();
         
         final byte[] EXP = new byte[] {
-                CBORConstants.BYTE_ARRAY_INDEFINITE,
+                (byte) (CBORConstants.PREFIX_TYPE_ARRAY+3),
                 (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 1),
                 (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 2),
                 (byte) (CBORConstants.PREFIX_TYPE_INT_POS + 3),
-                CBORConstants.BYTE_BREAK
         };
         
         _verifyBytes(out.toByteArray(), EXP);
@@ -247,6 +247,40 @@ public class GeneratorSimpleTest extends CBORTestBase
         byte[] b = MAPPER.writeValueAsBytes(new int[] { 1, 2, 3 });
         _verifyBytes(b, EXP);
     }
+    
+    public void testIntArrayLarge() throws Exception
+    {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        CBORGenerator gen = cborGenerator(out);
+        
+        // currently will produce indefinite-length array
+        gen.writeStartArray(50);
+        for(int i = 0; i < 50; i++) {
+          gen.writeNumber(i%16);
+        }
+        gen.writeEndArray();
+        gen.close();
+        
+        final byte[] EXP = new byte[52];
+        
+        EXP[0] = CBORConstants.BYTE_ARRAY_INDEFINITE;
+        EXP[51] = CBORConstants.BYTE_BREAK;
+        
+        int[] vals = new int[50]; 
+        for(int i = 0; i < 50; i++) {
+          
+          vals[i] = i%16;
+          EXP[i+1] = (byte) (CBORConstants.PREFIX_TYPE_INT_POS + (i%16));
+        }
+        
+        _verifyBytes(out.toByteArray(), EXP);
+
+        
+        // Also, data-binding should produce identical
+        byte[] b = MAPPER.writeValueAsBytes(vals);
+        _verifyBytes(b, EXP);
+    }
+    
 
     public void testTrivialObject() throws Exception
     {
