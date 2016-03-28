@@ -833,17 +833,19 @@ public final class CBORParser extends ParserMinimalBase
         }
         throw _constructError("Invalid CBOR value token (first byte): 0x"+Integer.toHexString(ch));
     }
+
     /**
      * Method for forcing full read of current token, even if it might otherwise
      * only be read if data is accessed via {@link #getText} and similar methods.
      */
+    @Override
     public void finishToken() throws IOException
     {
         if (_tokenIncomplete) {
             _finishToken();
         }
     }
-    
+
     /*
     /**********************************************************
     /* Public API, traversal, nextXxxValue/nextFieldName
