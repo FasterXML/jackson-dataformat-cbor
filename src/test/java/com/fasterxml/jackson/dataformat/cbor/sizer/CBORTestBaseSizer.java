@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.cbor.CBORGenerator;
 import com.fasterxml.jackson.dataformat.cbor.CBORParser;
 import com.fasterxml.jackson.dataformat.cbor.CBORTestBase;
 import com.fasterxml.jackson.dataformat.cbor.sizer.CBORFactorySizer;
@@ -40,6 +41,7 @@ public abstract class CBORTestBaseSizer extends CBORTestBase {
 
     protected CBORFactorySizer cborFactorySizer() {
         CBORFactorySizer f = new CBORFactorySizer();
+        f.disable(CBORGenerator.Feature.WRITE_TYPE_HEADER);
         return f;
     }
 
