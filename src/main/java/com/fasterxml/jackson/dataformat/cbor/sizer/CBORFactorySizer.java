@@ -13,73 +13,69 @@ import com.fasterxml.jackson.dataformat.cbor.CBORParserBootstrapper;
 import com.fasterxml.jackson.dataformat.cbor.PackageVersion;
 
 /**
- * Factory used for constructing {@link CBORParser} and {@link CBORGeneratorSizer}
- * instances; both of which handle
- * <a href="https://www.rfc-editor.org/info/rfc7049">CBOR</a>
- * encoded data.
- *<p>
+ * Factory used for constructing {@link CBORParser} and
+ * {@link CBORGeneratorSizer} instances; both of which handle
+ * <a href="https://www.rfc-editor.org/info/rfc7049">CBOR</a> encoded data.
+ * <p>
  * Extends {@link JsonFactory} mostly so that users can actually use it in place
  * of regular non-CBOR factory instances.
- *<p>
+ * <p>
  * Note on using non-byte-based sources/targets (char based, like
- * {@link java.io.Reader} and {@link java.io.Writer}): these can not be
- * used for CBOR documents; attempt will throw exception.
+ * {@link java.io.Reader} and {@link java.io.Writer}): these can not be used for
+ * CBOR documents; attempt will throw exception.
  * 
  */
-public class CBORFactorySizer extends JsonFactory
-{
-	private static final long serialVersionUID = 1; // 2.6
+public class CBORFactorySizer extends JsonFactory {
+    private static final long serialVersionUID = 1; // 2.6
 
     /*
-    /**********************************************************
-    /* Constants
-    /**********************************************************
+     * /********************************************************** /* Constants
+     * /**********************************************************
      */
 
-	/**
-     * Name used to identify CBOR format.
-     * (and returned by {@link #getFormatName()}
+    /**
+     * Name used to identify CBOR format. (and returned by
+     * {@link #getFormatName()}
      */
     public final static String FORMAT_NAME = "CBOR";
-    
+
     /**
-     * Bitfield (set of flags) of all parser features that are enabled
-     * by default.
+     * Bitfield (set of flags) of all parser features that are enabled by
+     * default.
      */
     final static int DEFAULT_CBOR_PARSER_FEATURE_FLAGS = CBORParser.Feature.collectDefaults();
 
     /**
-     * Bitfield (set of flags) of all generator features that are enabled
-     * by default.
+     * Bitfield (set of flags) of all generator features that are enabled by
+     * default.
      */
     final static int DEFAULT_CBOR_GENERATOR_FEATURE_FLAGS = CBORGeneratorSizer.Feature.collectDefaults();
 
     /*
-    /**********************************************************
-    /* Configuration
-    /**********************************************************
+     * /********************************************************** /*
+     * Configuration /**********************************************************
      */
 
     protected int _formatParserFeatures;
     protected int _formatGeneratorFeatures;
 
     /*
-    /**********************************************************
-    /* Factory construction, configuration
-    /**********************************************************
+     * /********************************************************** /* Factory
+     * construction, configuration
+     * /**********************************************************
      */
 
     /**
-     * Default constructor used to create factory instances.
-     * Creation of a factory instance is a light-weight operation,
-     * but it is still a good idea to reuse limited number of
-     * factory instances (and quite often just a single instance):
-     * factories are used as context for storing some reused
-     * processing objects (such as symbol tables parsers use)
-     * and this reuse only works within context of a single
-     * factory instance.
+     * Default constructor used to create factory instances. Creation of a
+     * factory instance is a light-weight operation, but it is still a good idea
+     * to reuse limited number of factory instances (and quite often just a
+     * single instance): factories are used as context for storing some reused
+     * processing objects (such as symbol tables parsers use) and this reuse
+     * only works within context of a single factory instance.
      */
-    public CBORFactorySizer() { this(null); }
+    public CBORFactorySizer() {
+        this(null);
+    }
 
     public CBORFactorySizer(ObjectCodec oc) {
         super(oc);
@@ -93,41 +89,37 @@ public class CBORFactorySizer extends JsonFactory
      * 
      * @since 2.2.1
      */
-    public CBORFactorySizer(CBORFactorySizer src, ObjectCodec oc)
-    {
+    public CBORFactorySizer(CBORFactorySizer src, ObjectCodec oc) {
         super(src, oc);
         _formatParserFeatures = src._formatParserFeatures;
         _formatGeneratorFeatures = src._formatGeneratorFeatures;
     }
 
     @Override
-    public CBORFactorySizer copy()
-    {
+    public CBORFactorySizer copy() {
         _checkInvalidCopy(CBORFactorySizer.class);
         // note: as with base class, must NOT copy mapper reference
         return new CBORFactorySizer(this, null);
     }
 
     /*
-    /**********************************************************
-    /* Serializable overrides
-    /**********************************************************
+     * /********************************************************** /*
+     * Serializable overrides
+     * /**********************************************************
      */
 
     /**
-     * Method that we need to override to actually make restoration go
-     * through constructors etc.
-     * Also: must be overridden by sub-classes as well.
+     * Method that we need to override to actually make restoration go through
+     * constructors etc. Also: must be overridden by sub-classes as well.
      */
     @Override
     protected Object readResolve() {
         return new CBORFactorySizer(this, _objectCodec);
     }
 
-    /*                                                                                       
-    /**********************************************************                              
-    /* Versioned                                                                             
-    /**********************************************************                              
+    /*
+     * /********************************************************** /* Versioned
+     * /**********************************************************
      */
 
     @Override
@@ -136,11 +128,11 @@ public class CBORFactorySizer extends JsonFactory
     }
 
     /*
-    /**********************************************************
-    /* Format detection functionality
-    /**********************************************************
+     * /********************************************************** /* Format
+     * detection functionality
+     * /**********************************************************
      */
-    
+
     @Override
     public String getFormatName() {
         return FORMAT_NAME;
@@ -155,9 +147,8 @@ public class CBORFactorySizer extends JsonFactory
     }
 
     /*
-    /**********************************************************
-    /* Capability introspection
-    /**********************************************************
+     * /********************************************************** /* Capability
+     * introspection /**********************************************************
      */
 
     @Override
@@ -174,19 +165,18 @@ public class CBORFactorySizer extends JsonFactory
     public Class<CBORGenerator.Feature> getFormatWriteFeatureType() {
         return CBORGenerator.Feature.class;
     }
-    
+
     /*
-    /**********************************************************
-    /* Configuration, parser settings
-    /**********************************************************
+     * /********************************************************** /*
+     * Configuration, parser settings
+     * /**********************************************************
      */
 
     /**
-     * Method for enabling or disabling specified parser feature
-     * (check {@link CBORParser.Feature} for list of features)
+     * Method for enabling or disabling specified parser feature (check
+     * {@link CBORParser.Feature} for list of features)
      */
-    public final CBORFactorySizer configure(CBORParser.Feature f, boolean state)
-    {
+    public final CBORFactorySizer configure(CBORParser.Feature f, boolean state) {
         if (state) {
             enable(f);
         } else {
@@ -196,8 +186,8 @@ public class CBORFactorySizer extends JsonFactory
     }
 
     /**
-     * Method for enabling specified parser feature
-     * (check {@link CBORParser.Feature} for list of features)
+     * Method for enabling specified parser feature (check
+     * {@link CBORParser.Feature} for list of features)
      */
     public CBORFactorySizer enable(CBORParser.Feature f) {
         _formatParserFeatures |= f.getMask();
@@ -205,8 +195,8 @@ public class CBORFactorySizer extends JsonFactory
     }
 
     /**
-     * Method for disabling specified parser features
-     * (check {@link CBORParser.Feature} for list of features)
+     * Method for disabling specified parser features (check
+     * {@link CBORParser.Feature} for list of features)
      */
     public CBORFactorySizer disable(CBORParser.Feature f) {
         _formatParserFeatures &= ~f.getMask();
@@ -221,14 +211,14 @@ public class CBORFactorySizer extends JsonFactory
     }
 
     /*
-    /**********************************************************
-    /* Configuration, generator settings
-    /**********************************************************
+     * /********************************************************** /*
+     * Configuration, generator settings
+     * /**********************************************************
      */
 
     /**
-     * Method for enabling or disabling specified generator feature
-     * (check {@link CBORGeneratorSizer.Feature} for list of features)
+     * Method for enabling or disabling specified generator feature (check
+     * {@link CBORGeneratorSizer.Feature} for list of features)
      */
     public CBORFactorySizer configure(CBORGenerator.Feature f, boolean state) {
         if (state) {
@@ -239,21 +229,20 @@ public class CBORFactorySizer extends JsonFactory
         return this;
     }
 
-
     /**
-     * Method for enabling specified generator features
-     * (check {@link CBORGeneratorSizer.Feature} for list of features)
+     * Method for enabling specified generator features (check
+     * {@link CBORGeneratorSizer.Feature} for list of features)
      */
-	public CBORFactorySizer enable(CBORGenerator.Feature f) {
+    public CBORFactorySizer enable(CBORGenerator.Feature f) {
         _formatGeneratorFeatures |= f.getMask();
         return this;
     }
 
     /**
-     * Method for disabling specified generator feature
-     * (check {@link CBORGeneratorSizer.Feature} for list of features)
+     * Method for disabling specified generator feature (check
+     * {@link CBORGeneratorSizer.Feature} for list of features)
      */
-	public CBORFactorySizer disable(CBORGenerator.Feature f) {
+    public CBORFactorySizer disable(CBORGenerator.Feature f) {
         _formatGeneratorFeatures &= ~f.getMask();
         return this;
     }
@@ -261,14 +250,14 @@ public class CBORFactorySizer extends JsonFactory
     /**
      * Check whether specified generator feature is enabled.
      */
-	public boolean isEnabled(CBORGenerator.Feature f) {
+    public boolean isEnabled(CBORGenerator.Feature f) {
         return (_formatGeneratorFeatures & f.getMask()) != 0;
     }
 
     /*
-    /**********************************************************
-    /* Overridden parser factory methods, new (2.1)
-    /**********************************************************
+     * /********************************************************** /* Overridden
+     * parser factory methods, new (2.1)
+     * /**********************************************************
      */
 
     @SuppressWarnings("resource")
@@ -298,41 +287,41 @@ public class CBORFactorySizer extends JsonFactory
     }
 
     /*
-    /**********************************************************
-    /* Overridden generator factory methods
-    /**********************************************************
+     * /********************************************************** /* Overridden
+     * generator factory methods
+     * /**********************************************************
      */
 
     /**
-     * Method for constructing {@link JsonGenerator} for generating
-     * CBOR-encoded output.
-     *<p>
-     * Since CBOR format always uses UTF-8 internally, <code>enc</code>
-     * argument is ignored.
+     * Method for constructing {@link JsonGenerator} for generating CBOR-encoded
+     * output.
+     * <p>
+     * Since CBOR format always uses UTF-8 internally, <code>enc</code> argument
+     * is ignored.
      */
     @Override
     public CBORGeneratorSizer createGenerator(OutputStream out, JsonEncoding enc) throws IOException {
-        return _createCBORGeneratorSizer(_createContext(out, false),
-                _generatorFeatures, _formatGeneratorFeatures, _objectCodec, out);
+        return _createCBORGeneratorSizer(_createContext(out, false), _generatorFeatures, _formatGeneratorFeatures,
+                _objectCodec, out);
     }
 
     /**
-     * Method for constructing {@link JsonGenerator} for generating
-     * CBOR-encoded output.
-     *<p>
-     * Since CBOR format always uses UTF-8 internally, no encoding need
-     * to be passed to this method.
+     * Method for constructing {@link JsonGenerator} for generating CBOR-encoded
+     * output.
+     * <p>
+     * Since CBOR format always uses UTF-8 internally, no encoding need to be
+     * passed to this method.
      */
     @Override
     public CBORGeneratorSizer createGenerator(OutputStream out) throws IOException {
-        return _createCBORGeneratorSizer(_createContext(out, false),
-                _generatorFeatures, _formatGeneratorFeatures, _objectCodec, out);
+        return _createCBORGeneratorSizer(_createContext(out, false), _generatorFeatures, _formatGeneratorFeatures,
+                _objectCodec, out);
     }
 
     /*
-    /******************************************************
-    /* Overridden internal factory methods
-    /******************************************************
+     * /****************************************************** /* Overridden
+     * internal factory methods
+     * /******************************************************
      */
 
     @Override
@@ -341,20 +330,16 @@ public class CBORFactorySizer extends JsonFactory
     }
 
     /**
-     * Overridable factory method that actually instantiates desired
-     * parser.
+     * Overridable factory method that actually instantiates desired parser.
      */
     @Override
-    protected CBORParser _createParser(InputStream in, IOContext ctxt) throws IOException
-    {
-        return new CBORParserBootstrapper(ctxt, in).constructParser(_factoryFeatures,
-                _parserFeatures, _formatParserFeatures,
-                _objectCodec, _byteSymbolCanonicalizer);
+    protected CBORParser _createParser(InputStream in, IOContext ctxt) throws IOException {
+        return new CBORParserBootstrapper(ctxt, in).constructParser(_factoryFeatures, _parserFeatures,
+                _formatParserFeatures, _objectCodec, _byteSymbolCanonicalizer);
     }
 
     /**
-     * Overridable factory method that actually instantiates desired
-     * parser.
+     * Overridable factory method that actually instantiates desired parser.
      */
     @Override
     protected JsonParser _createParser(Reader r, IOContext ctxt) throws IOException {
@@ -362,21 +347,18 @@ public class CBORFactorySizer extends JsonFactory
     }
 
     @Override
-    protected JsonParser _createParser(char[] data, int offset, int len, IOContext ctxt,
-            boolean recyclable) throws IOException {
+    protected JsonParser _createParser(char[] data, int offset, int len, IOContext ctxt, boolean recyclable)
+            throws IOException {
         return _nonByteSource();
     }
 
     /**
-     * Overridable factory method that actually instantiates desired
-     * parser.
+     * Overridable factory method that actually instantiates desired parser.
      */
     @Override
-    protected CBORParser _createParser(byte[] data, int offset, int len, IOContext ctxt) throws IOException
-    {
-        return new CBORParserBootstrapper(ctxt, data, offset, len).constructParser(
-                _factoryFeatures, _parserFeatures, _formatParserFeatures,
-                _objectCodec, _byteSymbolCanonicalizer);
+    protected CBORParser _createParser(byte[] data, int offset, int len, IOContext ctxt) throws IOException {
+        return new CBORParserBootstrapper(ctxt, data, offset, len).constructParser(_factoryFeatures, _parserFeatures,
+                _formatParserFeatures, _objectCodec, _byteSymbolCanonicalizer);
     }
 
     @Override
@@ -386,8 +368,7 @@ public class CBORFactorySizer extends JsonFactory
 
     @Override
     protected CBORGeneratorSizer _createUTF8Generator(OutputStream out, IOContext ctxt) throws IOException {
-        return _createCBORGeneratorSizer(ctxt,
-                _generatorFeatures, _formatGeneratorFeatures, _objectCodec, out);
+        return _createCBORGeneratorSizer(ctxt, _generatorFeatures, _formatGeneratorFeatures, _objectCodec, out);
     }
 
     @Override
@@ -395,17 +376,17 @@ public class CBORFactorySizer extends JsonFactory
         return _nonByteTarget();
     }
 
-    private final CBORGeneratorSizer _createCBORGeneratorSizer(IOContext ctxt,
-            int stdFeat, int formatFeat, ObjectCodec codec, OutputStream out) throws IOException
-    {
+    private final CBORGeneratorSizer _createCBORGeneratorSizer(IOContext ctxt, int stdFeat, int formatFeat,
+            ObjectCodec codec, OutputStream out) throws IOException {
         // false -> we won't manage the stream unless explicitly directed to
         CBORGeneratorSizer gen = new CBORGeneratorSizer(ctxt, stdFeat, formatFeat, _objectCodec, out);
-        /*if (CBORGenerator.Feature.WRITE_TYPE_HEADER.enabledIn(formatFeat)) {
-            gen.writeTag(CBORConstants.TAG_ID_SELF_DESCRIBE); 
-        }*/
+        /*
+         * if (CBORGenerator.Feature.WRITE_TYPE_HEADER.enabledIn(formatFeat)) {
+         * gen.writeTag(CBORConstants.TAG_ID_SELF_DESCRIBE); }
+         */
         return gen;
     }
-       
+
     protected <T> T _nonByteTarget() {
         throw new UnsupportedOperationException("Can not create generator for non-byte-based target");
     }

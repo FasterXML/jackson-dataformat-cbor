@@ -13,15 +13,13 @@ import com.fasterxml.jackson.dataformat.cbor.CBORParser;
 /**
  * Unit tests for simple value types.
  */
-public class ParserSimpleTestSizer extends CBORTestBaseSizer
-{
+public class ParserSimpleTestSizer extends CBORTestBaseSizer {
     private final ObjectMapper MAPPER = cborMapper();
-    
+
     /**
      * Test for verifying handling of 'true', 'false' and 'null' literals
      */
-    public void testSimpleLiterals() throws Exception
-    {
+    public void testSimpleLiterals() throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         JsonGenerator gen = cborGeneratorSizer(out);
         gen.writeBoolean(true);
@@ -49,9 +47,8 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         assertNull(p.nextToken());
         p.close();
     }
-    
-    public void testIntValues() throws Exception
-    {
+
+    public void testIntValues() throws Exception {
         // first, single-byte
         CBORFactorySizer f = cborFactorySizer();
         // single byte
@@ -70,8 +67,7 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         _verifyInt(f, 0x70000000 << 1);
     }
 
-    private void _verifyInt(CBORFactorySizer f, int value) throws Exception
-    {
+    private void _verifyInt(CBORFactorySizer f, int value) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         JsonGenerator gen = cborGeneratorSizer(f, out);
         gen.writeNumber(value);
@@ -85,15 +81,13 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         p.close();
     }
 
-    public void testLongValues() throws Exception
-    {
+    public void testLongValues() throws Exception {
         CBORFactorySizer f = cborFactorySizer();
         _verifyLong(f, 1L + Integer.MAX_VALUE);
         _verifyLong(f, -1L + Integer.MIN_VALUE);
     }
 
-    private void _verifyLong(CBORFactorySizer f, long value) throws Exception
-    {
+    private void _verifyLong(CBORFactorySizer f, long value) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         JsonGenerator gen = cborGeneratorSizer(f, out);
         gen.writeNumber(value);
@@ -106,9 +100,8 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         assertNull(p.nextToken());
         p.close();
     }
-    
-    public void testFloatValues() throws Exception
-    {
+
+    public void testFloatValues() throws Exception {
         // first, single-byte
         CBORFactorySizer f = cborFactorySizer();
         // single byte
@@ -116,7 +109,8 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         _verifyFloat(f, 20.5);
 
         // But then, oddity: 16-bit mini-float
-        // Examples from [https://en.wikipedia.org/wiki/Half_precision_floating-point_format]
+        // Examples from
+        // [https://en.wikipedia.org/wiki/Half_precision_floating-point_format]
         _verifyHalfFloat(f, 0, 0.0);
         _verifyHalfFloat(f, 0x3C00, 1.0);
         _verifyHalfFloat(f, 0xC000, -2.0);
@@ -127,8 +121,7 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         // ... can add more, but need bit looser comparison if so
     }
 
-    private void _verifyFloat(CBORFactorySizer f, double value) throws Exception
-    {
+    private void _verifyFloat(CBORFactorySizer f, double value) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         JsonGenerator gen = cborGeneratorSizer(f, out);
         gen.writeNumber((float) value);
@@ -136,39 +129,34 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         JsonParser p = cborParser(f, out.toByteArray());
         assertEquals(JsonToken.VALUE_NUMBER_FLOAT, p.nextToken());
         if (NumberType.FLOAT != p.getNumberType()) {
-            fail("Expected `NumberType.FLOAT`, got "+p.getNumberType()+": "+p.getText());
+            fail("Expected `NumberType.FLOAT`, got " + p.getNumberType() + ": " + p.getText());
         }
         assertEquals(value, p.getDoubleValue());
         assertNull(p.nextToken());
         p.close();
     }
 
-    private void _verifyHalfFloat(JsonFactory f, int i16, double value) throws IOException
-    {
-        JsonParser p = f.createParser(new byte[] {
-                (byte) (CBORConstants.PREFIX_TYPE_MISC + 25),
-                (byte) (i16 >> 8), (byte) i16
-        });
+    private void _verifyHalfFloat(JsonFactory f, int i16, double value) throws IOException {
+        JsonParser p = f.createParser(
+                new byte[] { (byte) (CBORConstants.PREFIX_TYPE_MISC + 25), (byte) (i16 >> 8), (byte) i16 });
         assertEquals(JsonToken.VALUE_NUMBER_FLOAT, p.nextToken());
         assertEquals(NumberType.FLOAT, p.getNumberType());
         assertEquals(value, p.getDoubleValue());
         assertNull(p.nextToken());
         p.close();
     }
-    
-    public void testSimpleArray() throws Exception
-    {
-        byte[] b = MAPPER.writeValueAsBytes(new int[] { 1, 2, 3, 4});
+
+    public void testSimpleArray() throws Exception {
+        byte[] b = MAPPER.writeValueAsBytes(new int[] { 1, 2, 3, 4 });
         int[] output = MAPPER.readValue(b, int[].class);
         assertEquals(4, output.length);
         for (int i = 1; i <= output.length; ++i) {
-            assertEquals(i, output[i-1]);
+            assertEquals(i, output[i - 1]);
         }
     }
 
-    public void testSimpleObject() throws Exception
-    {
-        Map<String,Object> input = new LinkedHashMap<String,Object>();
+    public void testSimpleObject() throws Exception {
+        Map<String, Object> input = new LinkedHashMap<String, Object>();
         input.put("a", 1);
         input.put("bar", "foo");
         final String NON_ASCII_NAME = "Y\\u00F6";
@@ -199,12 +187,12 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         assertEquals("", p.getCurrentName());
         assertToken(JsonToken.VALUE_STRING, p.nextToken());
         assertEquals("", p.getText());
-        
+
         assertToken(JsonToken.END_OBJECT, p.nextToken());
 
         p.close();
-        
-        Map<?,?> output = MAPPER.readValue(b, Map.class);
+
+        Map<?, ?> output = MAPPER.readValue(b, Map.class);
         assertEquals(4, output.size());
         assertEquals(Integer.valueOf(1), output.get("a"));
         assertEquals("foo", output.get("bar"));
@@ -212,17 +200,15 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         assertEquals("", output.get(""));
     }
 
-    public void testMediumText() throws Exception
-    {
+    public void testMediumText() throws Exception {
         _testMedium(1100);
         _testMedium(1300);
         _testMedium(1900);
         _testMedium(2300);
         _testMedium(3900);
     }
-    
-    private void _testMedium(int len) throws Exception
-    {
+
+    private void _testMedium(int len) throws Exception {
         // First, use size that should fit in output buffer, but
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         CBORGeneratorSizer gen = cborGeneratorSizer(out);
@@ -234,7 +220,7 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
 
         // verify that it is indeed non-chunked still...
         assertEquals((byte) (CBORConstants.PREFIX_TYPE_TEXT + 25), b[0]);
-        
+
         JsonParser p = cborParser(b);
         assertToken(JsonToken.VALUE_STRING, p.nextToken());
         assertEquals(MEDIUM, p.getText());
@@ -270,8 +256,7 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         assertEquals(22, p.getCurrentLocation().getByteOffset());
     }
 
-    public void testLongNonChunkedText() throws Exception
-    {
+    public void testLongNonChunkedText() throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         final String LONG = generateUnicodeString(37000);
@@ -296,33 +281,31 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         final int end = Math.min(LONG.length(), actual.length());
         for (int i = 0; i < end; ++i) {
             if (LONG.charAt(i) != actual.charAt(i)) {
-                fail("Character #"+i+" (of "+end+") differs; expected 0x"+Integer.toHexString(LONG.charAt(i))
-                        +" found 0x"+Integer.toHexString(actual.charAt(i)));
+                fail("Character #" + i + " (of " + end + ") differs; expected 0x" + Integer.toHexString(LONG.charAt(i))
+                        + " found 0x" + Integer.toHexString(actual.charAt(i)));
             }
         }
-        
+
         assertEquals(LONG.length(), actual.length());
-        
+
         assertEquals(LONG, p.getText());
         assertToken(JsonToken.END_ARRAY, p.nextToken());
         assertNull(p.nextToken());
         p.close();
     }
-    
-    public void testLongChunkedText() throws Exception
-    {
+
+    public void testLongChunkedText() throws Exception {
         // First, try with ASCII content
         StringBuilder sb = new StringBuilder(21000);
         for (int i = 0; i < 21000; ++i) {
             sb.append('Z');
         }
-        _testLongChunkedText(sb.toString());        
+        _testLongChunkedText(sb.toString());
         // Second, with actual variable byte-length Unicode
         _testLongChunkedText(generateUnicodeString(21000));
     }
-        
-    public void _testLongChunkedText(String input) throws Exception
-    {
+
+    public void _testLongChunkedText(String input) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         CBORGeneratorSizer gen = cborGeneratorSizer(out);
         gen.writeString(input);
@@ -331,13 +314,13 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         final int textByteCount = input.getBytes("UTF-8").length;
         final byte[] b = out.toByteArray();
         assertEquals((byte) (CBORConstants.PREFIX_TYPE_TEXT + 0x1F), b[0]);
-        assertEquals(CBORConstants.BYTE_BREAK, b[b.length-1]);
+        assertEquals(CBORConstants.BYTE_BREAK, b[b.length - 1]);
 
         // First, verify validity by scanning
         int i = 1;
         int total = 0;
 
-        for (int end = b.length-1; i < end; ) {
+        for (int end = b.length - 1; i < end;) {
             int type = b[i++] & 0xFF;
             int len = type - CBORConstants.PREFIX_TYPE_TEXT;
 
@@ -351,7 +334,7 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
             i += len;
             total += len;
         }
-        assertEquals(b.length-1, i);
+        assertEquals(b.length - 1, i);
         assertEquals(textByteCount, total);
 
         JsonParser p;
@@ -361,7 +344,7 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         assertToken(JsonToken.VALUE_STRING, p.nextToken());
         assertNull(p.nextToken());
         p.close();
-        
+
         // and then with actual full parsing/access
         p = cborParser(new ByteArrayInputStream(b));
         assertToken(JsonToken.VALUE_STRING, p.nextToken());
@@ -370,10 +353,11 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         assertEquals(input.length(), actual.length());
         if (!input.equals(actual)) {
             i = 0;
-            while (i < input.length() && input.charAt(i) == actual.charAt(i)) { ++i; }
-            fail("Strings differ at #"+i+" (length "+input.length()+"); expected 0x"
-                    +Integer.toHexString(input.charAt(i))+", got 0x"
-                    +Integer.toHexString(actual.charAt(i)));
+            while (i < input.length() && input.charAt(i) == actual.charAt(i)) {
+                ++i;
+            }
+            fail("Strings differ at #" + i + " (length " + input.length() + "); expected 0x"
+                    + Integer.toHexString(input.charAt(i)) + ", got 0x" + Integer.toHexString(actual.charAt(i)));
         }
         assertEquals(input, actual);
         p.close();
@@ -392,7 +376,10 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer
         assertEquals(JsonToken.START_OBJECT, parser.nextToken());
         assertEquals(JsonToken.FIELD_NAME, parser.nextToken());
         assertEquals(JsonToken.VALUE_NUMBER_FLOAT, parser.nextToken());
-        assertEquals(NumberType.FLOAT, parser.getNumberType()); // fails with expected <FLOAT> but was <DOUBLE>
+        assertEquals(NumberType.FLOAT, parser.getNumberType()); // fails with
+                                                                // expected
+                                                                // <FLOAT> but
+                                                                // was <DOUBLE>
         assertEquals(JsonToken.END_OBJECT, parser.nextToken());
         parser.close();
     }
