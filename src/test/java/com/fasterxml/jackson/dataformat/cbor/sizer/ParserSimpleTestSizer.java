@@ -376,10 +376,8 @@ public class ParserSimpleTestSizer extends CBORTestBaseSizer {
         assertEquals(JsonToken.START_OBJECT, parser.nextToken());
         assertEquals(JsonToken.FIELD_NAME, parser.nextToken());
         assertEquals(JsonToken.VALUE_NUMBER_FLOAT, parser.nextToken());
-        assertEquals(NumberType.FLOAT, parser.getNumberType()); // fails with
-                                                                // expected
-                                                                // <FLOAT> but
-                                                                // was <DOUBLE>
+        // fails with expected <FLOAT> but was <DOUBLE>
+        assertEquals(NumberType.FLOAT, parser.getNumberType());
         assertEquals(JsonToken.END_OBJECT, parser.nextToken());
         parser.close();
     }

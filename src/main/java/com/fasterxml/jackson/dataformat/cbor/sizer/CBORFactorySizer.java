@@ -7,6 +7,7 @@ import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.format.InputAccessor;
 import com.fasterxml.jackson.core.format.MatchStrength;
 import com.fasterxml.jackson.core.io.IOContext;
+import com.fasterxml.jackson.dataformat.cbor.CBORConstants;
 import com.fasterxml.jackson.dataformat.cbor.CBORGenerator;
 import com.fasterxml.jackson.dataformat.cbor.CBORParser;
 import com.fasterxml.jackson.dataformat.cbor.CBORParserBootstrapper;
@@ -29,8 +30,7 @@ public class CBORFactorySizer extends JsonFactory {
     private static final long serialVersionUID = 1; // 2.6
 
     /*
-     * /********************************************************** /* Constants
-     * /**********************************************************
+     * Constants
      */
 
     /**
@@ -52,17 +52,14 @@ public class CBORFactorySizer extends JsonFactory {
     final static int DEFAULT_CBOR_GENERATOR_FEATURE_FLAGS = CBORGeneratorSizer.Feature.collectDefaults();
 
     /*
-     * /********************************************************** /*
-     * Configuration /**********************************************************
+     * Configuration
      */
 
     protected int _formatParserFeatures;
     protected int _formatGeneratorFeatures;
 
     /*
-     * /********************************************************** /* Factory
-     * construction, configuration
-     * /**********************************************************
+     * Factory construction, configuration
      */
 
     /**
@@ -380,10 +377,11 @@ public class CBORFactorySizer extends JsonFactory {
             ObjectCodec codec, OutputStream out) throws IOException {
         // false -> we won't manage the stream unless explicitly directed to
         CBORGeneratorSizer gen = new CBORGeneratorSizer(ctxt, stdFeat, formatFeat, _objectCodec, out);
-        /*
-         * if (CBORGenerator.Feature.WRITE_TYPE_HEADER.enabledIn(formatFeat)) {
-         * gen.writeTag(CBORConstants.TAG_ID_SELF_DESCRIBE); }
-         */
+
+        if (CBORGenerator.Feature.WRITE_TYPE_HEADER.enabledIn(formatFeat)) {
+            gen.writeTag(CBORConstants.TAG_ID_SELF_DESCRIBE);
+        }
+
         return gen;
     }
 
