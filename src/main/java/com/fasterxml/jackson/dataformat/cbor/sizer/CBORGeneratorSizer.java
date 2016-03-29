@@ -46,28 +46,23 @@ public class CBORGeneratorSizer extends GeneratorBase {
             OutputStream out) {
         super(stdFeatures, codec);
         _cborGenerator = new CBORGenerator(ctxt, stdFeatures, formatFeatures, codec, out);
+
+        _commandsQueueStack = new Stack<Queue<Command>>();
     }
 
     private void enqueue(Command cmd) {
         _commandsQueue.add(cmd);
     }
 
-    private void clearQueue() {
-        _commandsQueue.clear();
-    }
-
     /**
      * The queuing is activated only for the map and arrays
      */
-    private boolean isQueuingIsEnabled() {
-        return (_commandsQueueStack != null);
+    private boolean isQueuingEnabled() {
+        return _commandsQueue != null;
     }
 
     private void createObjectContext() {
-        if (_commandsQueueStack == null) {
-            _commandsQueueStack = new Stack<Queue<Command>>();
-        }
-        if (_commandsQueue != null && !_commandsQueue.isEmpty()) {
+        if (_commandsQueue != null) {
             _commandsQueueStack.add(_commandsQueue);
         }
         _commandsQueue = new LinkedList<Command>();
@@ -100,6 +95,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
             _commandsQueue.add(arraySubCommand);
         } else {
             arraySubCommand.execute();
+            _commandsQueue = null;
         }
     }
 
@@ -125,6 +121,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
             _commandsQueue.add(objectSubCommand);
         } else {
             objectSubCommand.execute();
+            _commandsQueue = null;
         }
     }
 
@@ -135,7 +132,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeFieldName(String name) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterFieldName(this._cborGenerator, name));
         } else {
             _cborGenerator.writeFieldName(name);
@@ -144,7 +141,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeString(String text) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterStringStr(this._cborGenerator, text));
         } else {
             _cborGenerator.writeString(text);
@@ -153,7 +150,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeString(char[] text, int offset, int len) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterStringChar(this._cborGenerator, text, offset, len));
         } else {
             _cborGenerator.writeString(text, offset, len);
@@ -162,7 +159,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeRawUTF8String(byte[] text, int offset, int length) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterRawUTF8String(this._cborGenerator, text, offset, length));
         } else {
             _cborGenerator.writeRawUTF8String(text, offset, length);
@@ -171,7 +168,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeUTF8String(byte[] text, int offset, int length) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterUTF8String(this._cborGenerator, text, offset, length));
         } else {
             _cborGenerator.writeUTF8String(text, offset, length);
@@ -180,7 +177,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeRaw(String text) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterRaw(this._cborGenerator, text));
         } else {
             _cborGenerator.writeRaw(text);
@@ -189,7 +186,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeRaw(String text, int offset, int len) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterRawSo(this._cborGenerator, text, offset, len));
         } else {
             _cborGenerator.writeRaw(text, offset, len);
@@ -198,7 +195,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeRaw(char[] text, int offset, int len) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterRawCo(this._cborGenerator, text, offset, len));
         } else {
             _cborGenerator.writeRaw(text, offset, len);
@@ -207,7 +204,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeRaw(char c) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterRawC(this._cborGenerator, c));
         } else {
             _cborGenerator.writeRaw(c);
@@ -216,7 +213,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeBinary(Base64Variant bv, byte[] data, int offset, int len) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterBinary(this._cborGenerator, bv, data, offset, len));
         } else {
             _cborGenerator.writeBinary(bv, data, offset, len);
@@ -225,7 +222,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeNumber(int v) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterNumberInt(_cborGenerator, v));
         } else {
             _cborGenerator.writeNumber(v);
@@ -234,7 +231,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeNumber(long v) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterNumberLong(_cborGenerator, v));
         } else {
             _cborGenerator.writeNumber(v);
@@ -243,7 +240,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeNumber(BigInteger v) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterNumberBigInteger(_cborGenerator, v));
         } else {
             _cborGenerator.writeNumber(v);
@@ -252,7 +249,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeNumber(double v) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterNumberDouble(_cborGenerator, v));
         } else {
             _cborGenerator.writeNumber(v);
@@ -261,7 +258,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeNumber(float v) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterNumberFloat(_cborGenerator, v));
         } else {
             _cborGenerator.writeNumber(v);
@@ -270,7 +267,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeNumber(BigDecimal v) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterNumberBigDecimal(_cborGenerator, v));
         } else {
             _cborGenerator.writeNumber(v);
@@ -279,7 +276,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeNumber(String encodedValue) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterNumberString(_cborGenerator, encodedValue));
         } else {
             _cborGenerator.writeNumber(encodedValue);
@@ -288,7 +285,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeBoolean(boolean state) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterBoolean(_cborGenerator, state));
         } else {
             _cborGenerator.writeBoolean(state);
@@ -296,7 +293,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
     }
 
     public void writeTag(int tagId) throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterTag(_cborGenerator, tagId));
         } else {
             _cborGenerator.writeTag(tagId);
@@ -305,7 +302,7 @@ public class CBORGeneratorSizer extends GeneratorBase {
 
     @Override
     public void writeNull() throws IOException {
-        if (isQueuingIsEnabled()) {
+        if (isQueuingEnabled()) {
             enqueue(new WriterNull(_cborGenerator));
         } else {
             _cborGenerator.writeNull();
