@@ -19,7 +19,7 @@ abstract class Command {
         _cborGenerator = cborGenerator;
     }
 
-    abstract void execute() throws JsonGenerationException, IOException;
+    public abstract void execute() throws JsonGenerationException, IOException;
 }
 
 /**
