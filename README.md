@@ -20,7 +20,7 @@ Minor limitations exist with respect to advanced type-handling of `CBOR` format:
 
 * While tags are written for some types (`BigDecimal`, `BigInteger`), they are not handling on parsing
 
-# Maven dependency
+## Maven dependency
 
 To use this extension on Maven-based projects, use following dependency:
 
