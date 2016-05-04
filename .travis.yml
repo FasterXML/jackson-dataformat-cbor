@@ -3,3 +3,8 @@ language: java
 jdk:
   - oraclejdk7
   - oraclejdk8
+
+# whitelist; combined with other binary formats for 2.8
+branches:
+  only:
+    - "2.7"
