@@ -4,7 +4,9 @@ Project: jackson-dataformat-cbor
 === Releases ===
 ------------------------------------------------------------------------
 
-2.8.0 (not yet released)
+-- DEPRECATED -- 
+
+(moved to be part of `jackson-dataformats-binary`)
 
 2.7.3 (16-Mar-2016)
 
