@@ -8,6 +8,8 @@ Project: jackson-dataformat-cbor
 
 (moved to be part of `jackson-dataformats-binary`)
 
+2.7.5 (not yet released)
+2.7.4 (29-Apr-2016)
 2.7.3 (16-Mar-2016)
 
 No changes since 2.7.2
