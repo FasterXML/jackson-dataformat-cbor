@@ -11,7 +11,7 @@ import com.fasterxml.jackson.databind.*;
  */
 public class TestBiggerData extends CBORTestBase
 {
-	static class Citm
+	public static class Citm
 	{
 		public Map<Integer,String> areaNames;
 		public Map<Integer,String> audienceSubCategoryNames;
@@ -27,7 +27,7 @@ public class TestBiggerData extends CBORTestBase
 		public List<Performance> performances;
 	}
 
-	static class Event
+	public static class Event
 	{
 		public int id;
 		public String name;
@@ -39,7 +39,7 @@ public class TestBiggerData extends CBORTestBase
 		public LinkedHashSet<Integer> subTopicIds;
 	}
 
-	static class Performance
+	public static class Performance
 	{
 		public int id;
 		public int eventId;
@@ -55,18 +55,18 @@ public class TestBiggerData extends CBORTestBase
 		public String venueCode;
 }
 
-	static class Price {
+	public static class Price {
 		public int amount;
 		public int audienceSubCategoryId;
 		public int seatCategoryId;
 	}
 
-	static class SeatCategory {
+	public static class SeatCategory {
 		public int seatCategoryId;
 		public List<Area> areas;
 	}
 
-	static class Area {
+	public static class Area {
 		public int areaId;
 		public int[] blockIds;
 	}

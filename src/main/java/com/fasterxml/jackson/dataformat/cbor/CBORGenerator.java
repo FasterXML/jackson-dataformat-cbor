@@ -3,6 +3,7 @@ package com.fasterxml.jackson.dataformat.cbor;
 import java.io.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Stack;
 
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.io.*;
@@ -489,15 +490,14 @@ public class CBORGenerator extends GeneratorBase
     /**********************************************************
      */
 
+    Stack<Integer> _arraySize = new Stack<Integer>();
+    
     @Override
     public final void writeStartArray() throws IOException
     {
-        _verifyValueWrite("start an array");
-        _writeContext = _writeContext.createChildArrayContext();
-        _writeByte(BYTE_ARRAY_INDEFINITE);
+    	writeStartArray(-1);
     }
 
-    // TODO: implement this for CBOR
     /*
      * Unlike with JSON, this method can use slightly optimized version
      * since CBOR has a variant that allows embedding length in array
@@ -509,42 +509,66 @@ public class CBORGenerator extends GeneratorBase
     public void writeStartArray(int size) throws IOException {
         _verifyValueWrite("start an array");
         _writeContext = _writeContext.createChildArrayContext();
-        /*
-        if (size >= 31 || size < 0) {
-            _writeByte(BYTE_ARRAY_INDEFINITE);
+        
+        _arraySize.push(size);
+        
+        if (size < 0 || size >= 31) {
+          
+          _writeByte(BYTE_ARRAY_INDEFINITE);
         } else {
+        
+          _writeByte((byte)(PREFIX_TYPE_ARRAY + size));
         }
-        */
-        _writeByte(BYTE_ARRAY_INDEFINITE);
     }
-
+    
     @Override
     public final void writeEndArray() throws IOException
     {
         if (!_writeContext.inArray()) {
             _reportError("Current context not an ARRAY but "+_writeContext.getTypeDesc());
         }
-        _writeByte(BYTE_BREAK);
+        
+        int size = _arraySize.pop();
+        if (size < 0 || size >= 31) {
+            _writeByte(BYTE_BREAK); 
+        }
         _writeContext = _writeContext.getParent();
     }
 
+    Stack<Integer> _objectSize = new Stack<Integer>();
+    
     @Override
     public final void writeStartObject() throws IOException
     {
+    	writeStartObject(-1);       
+    }
+    
+    public void writeStartObject(int size) throws IOException
+    {
         _verifyValueWrite("start an object");
         _writeContext = _writeContext.createChildObjectContext();
-        _writeByte(BYTE_OBJECT_INDEFINITE);
+        
+        _objectSize.push(size);
+
+        if (size < 0 || size >= 31) {
+          
+          _writeByte(BYTE_OBJECT_INDEFINITE);
+        } else {
+        
+          _writeByte((byte)(PREFIX_TYPE_OBJECT + size));
+        }        
     }
 
     @Override // since 2.8
-    public final void writeStartObject(Object forValue) throws IOException
-    {
+    public final void writeStartObject(Object forValue) throws IOException {
         _verifyValueWrite("start an object");
         JsonWriteContext ctxt = _writeContext.createChildObjectContext();
         _writeContext = ctxt;
         if (forValue != null) {
             ctxt.setCurrentValue(forValue);
         }
+
+        _objectSize.push(-1);
         _writeByte(BYTE_OBJECT_INDEFINITE);
     }
 
@@ -555,7 +579,11 @@ public class CBORGenerator extends GeneratorBase
             _reportError("Current context not an object but "+_writeContext.getTypeDesc());
         }
         _writeContext = _writeContext.getParent();
-        _writeByte(BYTE_BREAK);
+        
+        int size = _objectSize.pop();
+        if (size < 0 || size >= 31) {
+          _writeByte(BYTE_BREAK); 
+        }
     }
 
     /*
