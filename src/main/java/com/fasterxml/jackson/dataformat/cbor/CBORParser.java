@@ -820,7 +820,7 @@ public final class CBORParser extends ParserMinimalBase
         if (neg) {
             i = -i - 1;
         }
-        return String.valueOf(1);
+        return String.valueOf(i);
     }
 
     // @since 2.7.2 -- will be added in `JsonParser` in 2.8
