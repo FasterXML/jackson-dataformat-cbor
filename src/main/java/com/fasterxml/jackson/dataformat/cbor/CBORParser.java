@@ -820,7 +820,7 @@ public final class CBORParser extends ParserMinimalBase
         if (neg) {
             i = -i - 1;
         }
-        return String.valueOf(1);
+        return String.valueOf(i);
     }
 
     // base impl is fine:

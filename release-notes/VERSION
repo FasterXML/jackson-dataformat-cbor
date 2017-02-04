@@ -4,11 +4,17 @@ Project: jackson-dataformat-cbor
 === Releases ===
 ------------------------------------------------------------------------
 
--- DEPRECATED -- 
+2.7.9 (04-Feb-2017)
+2.7.8 (26-Sep-2016)
+2.7.7 (27-Aug-2016)
 
-(moved to be part of `jackson-dataformats-binary`)
+No changes since 2.7.6
 
-2.7.5 (not yet released)
+2.7.6 (23-Jul-2016)
+
+base-modules#24: [cbor] Incorrect coercion for int-valued Map keys to String
+
+2.7.5 (11-Jun-2016)
 2.7.4 (29-Apr-2016)
 2.7.3 (16-Mar-2016)
 
@@ -31,7 +37,7 @@ No changes since 2.7.2
 
 #14: Add support for dynamically changing `CBORGenerator.Feature`s
 
-2.6.6 (not yet released)
+2.6.6 (05-Apr-2016)
 
 #18: Correct parsing of zero length byte strings
  (reported, fix suggested by philipa@github)
