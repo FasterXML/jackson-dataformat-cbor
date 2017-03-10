@@ -2097,7 +2097,7 @@ public final class CBORParser extends ParserMinimalBase
                 return NO_BYTES;
             }
             byte[] b = new byte[len];
-            if (_inputPtr >= _inputEnd) {
+            if (_inputPtr > _inputEnd) {
                 loadMoreGuaranteed();
             }
             int ptr = 0;
